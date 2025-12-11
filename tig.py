@@ -3,6 +3,7 @@
 from concurrent.futures import ThreadPoolExecutor
 import requests
 import os
+import re
 import shutil
 import subprocess
 import tempfile
@@ -56,9 +57,18 @@ def init_challenge(challenge: str, force: bool = False):
     base_dir = "algo-runner/src/challenge"
     reset_folder(base_dir, force)
     contents = download_contents(f"tig-challenges/src/{challenge}", "blank_slate")
-    contents["mod.rs"] = contents["mod.rs"].replace(
-        "use crate::QUALITY_PRECISION;",
-        "use algo_runner::*;"
+    clean_contents(
+        contents, ".*\.rs",
+        lambda x: x.replace(
+            "use crate::QUALITY_PRECISION;",
+            "use algo_runner::*;"
+        ).replace(
+            ".gen()",
+            ".r#gen()"
+        ).replace(
+            f"use crate::{challenge}::",
+            "use crate::challenge::"
+        )
     )
     write_contents(base_dir, contents)
 
@@ -72,10 +82,24 @@ def build_algorithm():
         raise Exception("Cargo is not installed or not found in PATH. Please install Rust and Cargo from https://www.rust-lang.org/tools/install")
     subprocess.run(["cargo", "build", "--release"], cwd="algo-runner", check=True)
 
+def clean_contents(contents: dict, name_regex: str, clean_func):
+    for name, content in contents.items():
+        if isinstance(content, dict):
+            clean_contents(content, name_regex, clean_func)
+        elif isinstance(content, str) and re.match(name_regex, name):
+            contents[name] = clean_func(content)
+
 def download_algorithm(challenge: str, algorithm: str, force: bool = False):
     base_dir = "algo-runner/src/algorithm"
     reset_folder(base_dir, force)
     contents = download_contents(f"tig-algorithms/src/{challenge}/{algorithm}", f"{challenge}/{algorithm}")
+    clean_contents(
+        contents, ".*\.rs", 
+        lambda x: x.replace(
+            f"use tig_challenges::{challenge}::",
+            "use crate::challenge::"
+        )
+    )
     write_contents(base_dir, contents)
 
 def list_algorithms(challenge: str) -> list[dict]:
@@ -220,22 +244,25 @@ if __name__ == "__main__":
     
     args = parser.parse_args()
     
-    if args.command == "init_challenge":
-        init_challenge(args.challenge, args.force)
-    elif args.command == "download_algorithm":
-        download_algorithm(args.challenge, args.algorithm, args.force)
-    elif args.command == "build_algorithm":
-        build_algorithm()
-    elif args.command == "list_algorithms":
-        list_algorithms(args.challenge)
-    elif args.command == "test_algorithm":
-        test_algorithm(
-            args.track_id,
-            args.num_tests,
-            args.num_workers,
-            args.hyperparameters,
-            args.timeout,
-            args.debug
-        )
-    else:
-        parser.print_help()
+    try:
+        if args.command == "init_challenge":
+            init_challenge(args.challenge, args.force)
+        elif args.command == "download_algorithm":
+            download_algorithm(args.challenge, args.algorithm, args.force)
+        elif args.command == "build_algorithm":
+            build_algorithm()
+        elif args.command == "list_algorithms":
+            list_algorithms(args.challenge)
+        elif args.command == "test_algorithm":
+            test_algorithm(
+                args.track_id,
+                args.num_tests,
+                args.num_workers,
+                args.hyperparameters,
+                args.timeout,
+                args.debug
+            )
+        else:
+            parser.print_help()
+    except Exception as e:
+        print(f"Error: {e}")

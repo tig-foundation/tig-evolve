@@ -4,11 +4,7 @@ pub const QUALITY_PRECISION: i32 = 1_000_000;
 #[macro_export]
 macro_rules! conditional_pub {
     (fn $name:ident $($rest:tt)*) => {
-        #[cfg(not(feature = "hide_verification"))]
         pub fn $name $($rest)*
-
-        #[cfg(feature = "hide_verification")]
-        fn $name $($rest)*
     };
 }
 

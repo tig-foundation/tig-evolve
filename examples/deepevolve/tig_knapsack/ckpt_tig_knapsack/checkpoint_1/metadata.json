@@ -1,0 +1,30 @@
+{
+  "feature_map": {
+    "0-0-0": "root"
+  },
+  "islands": [
+    [
+      "b499fd0e-6baf-43b5-9c46-f71d882dc423",
+      "root"
+    ],
+    [],
+    [],
+    [],
+    []
+  ],
+  "archive": [
+    "b499fd0e-6baf-43b5-9c46-f71d882dc423",
+    "root"
+  ],
+  "best_program_id": "root",
+  "last_iteration": 1,
+  "current_island": 0,
+  "island_generations": [
+    1,
+    0,
+    0,
+    0,
+    0
+  ],
+  "last_migration_generation": 0
+}

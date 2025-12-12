@@ -1,0 +1,40 @@
+{
+  "id": "root",
+  "idea": {
+    "description": "The Greedy value/weight seed approach utilizes a heuristic based on the ratio of value to weight of resources to make optimized selections. It introduces a positive-interaction bonus to enhance the model's effectiveness. This method serves as a foundational step, allowing for further refinements and improvements through iterative processes using DeepEvolve techniques.",
+    "motivation": "The motivation behind this approach is to efficiently allocate resources by maximizing value while minimizing weight. The positive-interaction bonus aims to encourage the selection of resources that complement each other well, leading to better overall outcomes.",
+    "implementation_notes": "Implementation could involve defining a scoring system based on the value/weight heuristic and applying the positive-interaction bonus during the selection phase. An iterative framework using DeepEvolve can be integrated after the initial greedy selection to optimize and refine results.",
+    "pseudocode": "1. Define value/weight for resources.\n2. Calculate initial scores using the heuristic.\n3. Apply positive-interaction bonus to selected candidates.\n4. Use DeepEvolve to iteratively improve selections based on optimization goals.",
+    "originality": {
+      "score": 7,
+      "positive": "Utilizes established heuristics in a novel combination with DeepEvolve.",
+      "negative": "Concepts of value/weight and greedy selection are common in optimization problems."
+    },
+    "future_potential": {
+      "score": 8,
+      "positive": "Has potential for diverse applications in optimization problems across various domains.",
+      "negative": "Effectiveness depends on the nature of the problems and may require significant tuning."
+    },
+    "code_difficulty": {
+      "score": 5,
+      "positive": "Relatively straightforward with a clear heuristic framework.",
+      "negative": "Integration with DeepEvolve adds a layer of complexity."
+    }
+  },
+  "timestamp": 1765469906.8685312,
+  "parent_id": "root",
+  "evolution_history": [],
+  "iteration_found": 0,
+  "metrics": {
+    "combined_score": -16335.0,
+    "quality": -16335.0,
+    "time_seconds": 0.000786049,
+    "memory_kb": 3712
+  },
+  "metadata": {
+    "island": 0
+  },
+  "language": "rust",
+  "report": "Start from a simple value/weight heuristic with positive-interaction bonus; leave room for iterative improvement by DeepEvolve",
+  "code": "# === deepevolve_interface.py ===\nimport json\nimport os\nimport shutil\nimport subprocess\nimport traceback\nfrom pathlib import Path\n\n# Absolute path to the TIG repo on this machine\nREPO_ROOT = Path(\"/root/tig-evolve\")\nALGO_RUNNER = REPO_ROOT / \"algo-runner\"\n\n# Track to evaluate; override with TIG_TRACK_ID env if needed\nTRACK_ID = os.getenv(\"TIG_TRACK_ID\", \"n_items=500,density=5\")\n\n# Quick evaluation defaults\nNUM_TESTS = int(os.getenv(\"TIG_NUM_TESTS\", \"10\"))\nTIMEOUT = int(os.getenv(\"TIG_TIMEOUT\", \"60\"))\n\n\ndef run_cmd(cmd, cwd):\n    \"\"\"Run a command and return (ok, stdout, stderr).\"\"\"\n    res = subprocess.run(cmd, cwd=cwd, text=True, capture_output=True)\n    return res.returncode == 0, res.stdout, res.stderr\n\n\ndef parse_metrics(stdout: str):\n    \"\"\"\n    Parse tig.py test_algorithm output lines like:\n    Seed: 0, Quality: <q>, Time: <t>, Memory: <m>KB\n    \"\"\"\n    quality = None\n    time_s = None\n    mem_kb = None\n    for line in stdout.splitlines():\n        if \"Quality:\" in line:\n            parts = line.split(\",\")\n            for part in parts:\n                if \"Quality:\" in part:\n                    try:\n                        quality = float(part.split(\":\")[1].strip())\n                    except Exception:\n                        quality = None\n                if \"Time:\" in part:\n                    try:\n                        time_s = float(part.split(\":\")[1].strip())\n                    except Exception:\n                        time_s = None\n                if \"Memory:\" in part:\n                    try:\n                        mem_kb = int(\n                            part.split(\":\")[1]\n                            .strip()\n                            .replace(\"KB\", \"\")\n                            .strip()\n                        )\n                    except Exception:\n                        mem_kb = None\n    return quality, time_s, mem_kb\n\n\ndef deepevolve_interface():\n    try:\n        # Locate evolved Rust sources in the temp workspace\n        src_algo = Path(__file__).resolve().parent / \"algo-runner\" / \"src\" / \"algorithm\"\n        if not src_algo.exists():\n            return False, f\"Missing evolved Rust sources at {src_algo}\"\n\n        dst_algo = ALGO_RUNNER / \"src\" / \"algorithm\"\n        if dst_algo.exists():\n            shutil.rmtree(dst_algo)\n        shutil.copytree(src_algo, dst_algo)\n\n        ok, out, err = run_cmd([\"python\", \"tig.py\", \"build_algorithm\"], cwd=REPO_ROOT)\n        if not ok:\n            return False, f\"build_algorithm failed\\nstdout:\\n{out}\\nstderr:\\n{err}\"\n\n        cmd = [\n            \"python\",\n            \"tig.py\",\n            \"test_algorithm\",\n            TRACK_ID,\n            \"--tests\",\n            str(NUM_TESTS),\n            \"--timeout\",\n            str(TIMEOUT),\n        ]\n        ok, out, err = run_cmd(cmd, cwd=REPO_ROOT)\n        if not ok:\n            return False, f\"test_algorithm failed\\nstdout:\\n{out}\\nstderr:\\n{err}\"\n\n        quality, time_s, mem_kb = parse_metrics(out)\n        if quality is None:\n            return False, f\"Could not parse quality from output:\\n{out}\"\n\n        metrics = {\n            \"combined_score\": quality,\n            \"quality\": quality,\n            \"time_seconds\": time_s,\n            \"memory_kb\": mem_kb,\n        }\n        return True, metrics\n\n    except Exception:\n        return False, traceback.format_exc()\n\n\n\n# === algo-runner/src/algorithm/mod.rs ===\n// TIG's UI uses the pattern `tig_challenges::<challenge_name>` to automatically detect your algorithm's challenge\nuse crate::challenge::*;\nuse anyhow::{Result, anyhow};\nuse serde_json::{Map, Value};\n\n/// Simple greedy seed: rank items by (value + 0.5 * positive interaction sum) / weight.\n/// This is intentionally lightweight so DeepEvolve can iterate and improve it.\npub fn solve_challenge(\n    challenge: &Challenge,\n    save_solution: &dyn Fn(&Solution) -> Result<()>,\n    hyperparameters: &Option<Map<String, Value>>,\n) -> Result<()> {\n    let _params = hyperparameters.as_ref().unwrap_or(&Map::new());\n\n    let n = challenge.num_items;\n    if n == 0 {\n        return Err(anyhow!(\"Empty challenge\"));\n    }\n\n    // Precompute positive interaction contributions per item (approximation).\n    let mut pos_interactions: Vec<i64> = Vec::with_capacity(n);\n    for i in 0..n {\n        let sum = challenge.interaction_values[i]\n            .iter()\n            .filter(|&&v| v > 0)\n            .map(|&v| v as i64)\n            .sum::<i64>();\n        pos_interactions.push(sum);\n    }\n\n    // Rank items by approximate value density.\n    let mut ranked: Vec<(usize, f64)> = (0..n)\n        .map(|i| {\n            let weight = challenge.weights[i].max(1) as f64;\n            let approx_value = challenge.values[i] as f64 + 0.5 * pos_interactions[i] as f64;\n            let ratio = approx_value / weight;\n            (i, ratio)\n        })\n        .collect();\n\n    ranked.sort_by(|a, b| {\n        b.1.partial_cmp(&a.1)\n            .unwrap_or(std::cmp::Ordering::Equal)\n    });\n\n    let mut selection = Vec::new();\n    let mut total_weight: u32 = 0;\n\n    for (idx, _) in ranked {\n        let w = challenge.weights[idx];\n        if total_weight + w <= challenge.max_weight {\n            total_weight += w;\n            selection.push(idx);\n        }\n    }\n\n    let mut solution = Solution::new();\n    solution.items = selection;\n    save_solution(&solution)\n}\n\n"
+}

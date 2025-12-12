@@ -256,8 +256,8 @@ if __name__ == "__main__":
         elif args.command == "test_algorithm":
             test_algorithm(
                 args.track_id,
-                args.num_tests,
-                args.num_workers,
+                args.tests,
+                args.workers,
                 args.hyperparameters,
                 args.timeout,
                 args.debug

@@ -1,0 +1,170 @@
+# === deepevolve_interface.py ===
+import json
+import os
+import shutil
+import subprocess
+import traceback
+from pathlib import Path
+
+# Absolute path to the TIG repo on this machine
+REPO_ROOT = Path("/root/tig-evolve")
+ALGO_RUNNER = REPO_ROOT / "algo-runner"
+
+# Track to evaluate; override with TIG_TRACK_ID env if needed
+TRACK_ID = os.getenv("TIG_TRACK_ID", "n_items=500,density=5")
+
+# Quick evaluation defaults
+NUM_TESTS = int(os.getenv("TIG_NUM_TESTS", "10"))
+TIMEOUT = int(os.getenv("TIG_TIMEOUT", "60"))
+
+
+def run_cmd(cmd, cwd):
+    """Run a command and return (ok, stdout, stderr)."""
+    res = subprocess.run(cmd, cwd=cwd, text=True, capture_output=True)
+    return res.returncode == 0, res.stdout, res.stderr
+
+
+def parse_metrics(stdout: str):
+    """
+    Parse tig.py test_algorithm output lines like:
+    Seed: 0, Quality: <q>, Time: <t>, Memory: <m>KB
+    """
+    quality = None
+    time_s = None
+    mem_kb = None
+    for line in stdout.splitlines():
+        if "Quality:" in line:
+            parts = line.split(",")
+            for part in parts:
+                if "Quality:" in part:
+                    try:
+                        quality = float(part.split(":")[1].strip())
+                    except Exception:
+                        quality = None
+                if "Time:" in part:
+                    try:
+                        time_s = float(part.split(":")[1].strip())
+                    except Exception:
+                        time_s = None
+                if "Memory:" in part:
+                    try:
+                        mem_kb = int(
+                            part.split(":")[1]
+                            .strip()
+                            .replace("KB", "")
+                            .strip()
+                        )
+                    except Exception:
+                        mem_kb = None
+    return quality, time_s, mem_kb
+
+
+def deepevolve_interface():
+    try:
+        # Locate evolved Rust sources in the temp workspace
+        src_algo = Path(__file__).resolve().parent / "algo-runner" / "src" / "algorithm"
+        if not src_algo.exists():
+            return False, f"Missing evolved Rust sources at {src_algo}"
+
+        dst_algo = ALGO_RUNNER / "src" / "algorithm"
+        if dst_algo.exists():
+            shutil.rmtree(dst_algo)
+        shutil.copytree(src_algo, dst_algo)
+
+        ok, out, err = run_cmd(["python", "tig.py", "build_algorithm"], cwd=REPO_ROOT)
+        if not ok:
+            return False, f"build_algorithm failed\nstdout:\n{out}\nstderr:\n{err}"
+
+        cmd = [
+            "python",
+            "tig.py",
+            "test_algorithm",
+            TRACK_ID,
+            "--tests",
+            str(NUM_TESTS),
+            "--timeout",
+            str(TIMEOUT),
+        ]
+        ok, out, err = run_cmd(cmd, cwd=REPO_ROOT)
+        if not ok:
+            return False, f"test_algorithm failed\nstdout:\n{out}\nstderr:\n{err}"
+
+        quality, time_s, mem_kb = parse_metrics(out)
+        if quality is None:
+            return False, f"Could not parse quality from output:\n{out}"
+
+        metrics = {
+            "combined_score": quality,
+            "quality": quality,
+            "time_seconds": time_s,
+            "memory_kb": mem_kb,
+        }
+        return True, metrics
+
+    except Exception:
+        return False, traceback.format_exc()
+
+
+
+# === algo-runner/src/algorithm/mod.rs ===
+// TIG's UI uses the pattern `tig_challenges::<challenge_name>` to automatically detect your algorithm's challenge
+use crate::challenge::*;
+use anyhow::{Result, anyhow};
+use serde_json::{Map, Value};
+
+/// Simple greedy seed: rank items by (value + 0.5 * positive interaction sum) / weight.
+/// This is intentionally lightweight so DeepEvolve can iterate and improve it.
+pub fn solve_challenge(
+    challenge: &Challenge,
+    save_solution: &dyn Fn(&Solution) -> Result<()>,
+    hyperparameters: &Option<Map<String, Value>>,
+) -> Result<()> {
+    let _params = hyperparameters.as_ref().unwrap_or(&Map::new());
+
+    let n = challenge.num_items;
+    if n == 0 {
+        return Err(anyhow!("Empty challenge"));
+    }
+
+    // Precompute positive interaction contributions per item (approximation).
+    let mut pos_interactions: Vec<i64> = Vec::with_capacity(n);
+    for i in 0..n {
+        let sum = challenge.interaction_values[i]
+            .iter()
+            .filter(|&&v| v > 0)
+            .map(|&v| v as i64)
+            .sum::<i64>();
+        pos_interactions.push(sum);
+    }
+
+    // Rank items by approximate value density.
+    let mut ranked: Vec<(usize, f64)> = (0..n)
+        .map(|i| {
+            let weight = challenge.weights[i].max(1) as f64;
+            let approx_value = challenge.values[i] as f64 + 0.5 * pos_interactions[i] as f64;
+            let ratio = approx_value / weight;
+            (i, ratio)
+        })
+        .collect();
+
+    ranked.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut selection = Vec::new();
+    let mut total_weight: u32 = 0;
+
+    for (idx, _) in ranked {
+        let w = challenge.weights[idx];
+        if total_weight + w <= challenge.max_weight {
+            total_weight += w;
+            selection.push(idx);
+        }
+    }
+
+    let mut solution = Solution::new();
+    solution.items = selection;
+    save_solution(&solution)
+}
+

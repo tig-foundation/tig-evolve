@@ -1,0 +1,16 @@
+{
+  "problem": {
+    "name": "tig_knapsack",
+    "description": "Evolve a Rust solver for TIG quadratic knapsack (n_items=500,density=5)",
+    "metric": "Maximize TIG quality score; secondary minimize runtime/memory",
+    "interface": "deepevolve_interface.py",
+    "language": "rust"
+  },
+  "initial_idea": {
+    "title": "Greedy value/weight seed",
+    "content": "Start from a simple value/weight heuristic with positive-interaction bonus; leave room for iterative improvement by DeepEvolve",
+    "supplement": ""
+  }
+}
+
+

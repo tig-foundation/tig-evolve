@@ -6,8 +6,29 @@ import subprocess
 import traceback
 from pathlib import Path
 
-# Absolute path to the TIG repo on this machine
-REPO_ROOT = Path("/root/tig-evolve")
+
+def detect_repo_root(marker: str = "tig.py") -> Path:
+    """Walk up from this file until we find the repo marker (tig.py)."""
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent if (parent / marker).exists() else None
+        if candidate:
+            return candidate
+    raise FileNotFoundError(
+        f"Could not locate repository root containing {marker}. "
+        "Set TIG_REPO_ROOT to override."
+    )
+
+
+def resolve_repo_root() -> Path:
+    """Resolve the TIG repo root via env override or automatic detection."""
+    env_path = os.getenv("TIG_REPO_ROOT")
+    if env_path:
+        return Path(env_path).expanduser().resolve()
+    return detect_repo_root()
+
+
+# Absolute path to the TIG repo (auto-detected unless TIG_REPO_ROOT overrides)
+REPO_ROOT = resolve_repo_root()
 ALGO_RUNNER = REPO_ROOT / "algo-runner"
 
 # Track to evaluate; override with TIG_TRACK_ID env if needed
@@ -123,4 +144,3 @@ def deepevolve_interface():
 
     except Exception:
         return False, traceback.format_exc()
-

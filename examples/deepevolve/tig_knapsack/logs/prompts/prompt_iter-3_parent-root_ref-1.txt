@@ -1,0 +1,848 @@
+
+User query: # Knapsack Challenge Information
+
+Evolve a Rust algorithm that solves the Quadratic Knapsack problem
+
+
+## Task Description
+
+
+The Quadratic Knapsack challenge:  Given a set of items, each with a weight and value, and pairwise interaction values between items, select a subset of items that maximizes the total value while respecting a maximum weight constraint. The total value includes both individual item values and the sum of interaction values between all pairs of selected items.
+
+
+## Input Format
+
+
+Your algorithm receives a `Challenge` struct with the following fields:
+
+
+- `seed: [u8; 32]` - Random seed for reproducible instance generation
+- `num_items: usize` - Number of items (n)
+- `weights: Vec<u32>` - Weight of each item (weights[i] ∈ [1, 50])
+- `values: Vec<u32>` - Individual value of each item (values[i] ∈ [0, 100] with density probability, 0 otherwise)
+- `interaction_values: Vec<Vec<i32>>` - Symmetric matrix of pairwise interaction values (interaction_values[i][j] ∈ [0, 100]
+- `max_weight: u32` - Maximum allowed total weight (set to sum of all weights / 2)
+
+
+## Output Format
+
+
+Your algorithm must return a `Solution` struct containing:
+
+
+- `items: Vec<usize>` - Indices of selected items (must be unique, 0-based indexing)
+
+
+## Constraints
+
+
+- Total weight of selected items ≤ max_weight
+- No duplicate items in the solution
+
+
+## Value Calculation
+
+
+The total value is calculated as:
+
+
+```
+total_value = Σ(values[i] for i in selected_items) + Σ(interaction_values[i][j] for i,j in selected_items pairs)
+```
+
+
+
+
+## Scoring Metric
+
+
+Solutions are scored using a quality metric that compares against a baseline greedy algorithm:
+
+
+Takes your solution's total_value, compares it to the value of the greedy baseline solution's (V_greedy), outputting the
+
+
+Quality = (total_value - V_greedy) / V_greedy
+
+
+Higher quality scores are better
+
+
+
+
+## Algorithm Implementation
+
+
+To implement a solution:
+
+
+1. Use the provided `solve_challenge` function signature to implement your algorithm
+2. Periodically save intermediate solutions using `save_solution(&Solution)` function
+3. Return `Ok(())` on success or `Err(anyhow!("error message"))` on failure
+
+
+## Tips for Implementation
+
+
+1. **Deterministic Behavior**: Use the challenge seed for any random number generation to ensure reproducible results
+2. **Incremental Saves**: Save intermediate solutions during long-running searches
+3. **Data Structures**: Use efficient data structures.
+4. **Imports**: If you want to add new imports they must be from the standard library std.
+5. **No Training**: Do not implement an algorithm that requires training, we do not want machine learning models.
+6. **Using Hyperparameters**: I)  Define the struct: Add fields to the Hyperparameters struct in the template:
+
+
+`#[derive(Serialize, Deserialize)]
+pub struct Hyperparameters {
+    pub param1: usize,
+    pub param2: f64,
+    // Add more fields as needed
+}`
+
+
+
+
+ii) Parse in solve_challenge: Uncomment and modify the hyperparameter parsing code:
+
+
+`let hyperparameters = match hyperparameters {
+    Some(hyperparameters) => {
+        serde_json::from_value::<Hyperparameters>(Value::Object(hyperparameters.clone()))
+            .map_err(|e| anyhow!("Failed to parse hyperparameters: {}", e))?
+    }
+    None => Hyperparameters {
+        param1: default_value,
+        param2: default_value,
+        // Set defaults for all fields
+    },
+};`
+
+
+ii) Use the parsed struct: Access hyperparameters like hyperparameters.param1 in your algorithm logic.
+
+Research problem: Evolve a Rust solver for quadratic knapsack problem
+
+Inspirations:
+### Inspiration 0
+- Research Idea : description='Using a Genetic Algorithm with Interaction Scoring approach to solve the QKP, leveraging item synergies while maintaining a focus on item values and weights. The method aligns closely with findings from the Breakpoints Algorithm and linearization techniques.' motivation='The combination allows for exploring solutions beyond simple heuristics by assessing item interactions alongside their individual contributions, aiming for superior total value while emphasizing scalability and efficiency.' implementation_notes='Adopt a structured framework to ensure easy traversal of solution spaces using genetic approaches, evaluating item interactions efficiently during each population assessment. Incorporate advanced techniques such as those found in the Breakpoints Algorithm for additional scalability and effectiveness.' pseudocode='function genetic_algorithm(interaction_values, weights, values, max_weight):\n    population = initialize_population()\n    for generation in range(MAX_GENERATIONS):\n        scores = evaluate_population(population, interaction_values, weights, values)\n        parents = select_parents(population, scores)\n        offspring = crossover_and_mutate(parents)\n        population = replacement_strategy(population, offspring)\n    return best_solution(population)' originality=EvaluationData(score=8, positive='Novel integration of interaction values into a genetic approach, enhancing solution quality over standard greedy methods, with appropriate support from existing literature like the Breakpoints Algorithm.', negative='Building on existing concepts of genetic algorithms means it may not seem entirely novel.') future_potential=EvaluationData(score=9, positive='Offers a strong foundation for future enhancements and explorations into hybrid models, promising broader applications in similar problems across various scales.', negative='Implementation complexity may pose challenges, limiting immediate usability.') code_difficulty=EvaluationData(score=7, positive='While relatively straightforward in concept, the intricacies of maintaining population diversity and interaction evaluations may complicate the codebase, requiring diligent management of solution dynamics.', negative='Efficient implementation requires robust handling of the population and evaluation metrics, which may increase initial development time.')
+- Performance: combined_score=0.0000
+- Code changes: Line 160 to 298: ```rust
+use rand::seq::SliceRandom; // Import random choice for genetic operations
+use rand::Rng; // For random number generation
+use std::collections::HashSet;
+
+// Genetic Algorithm Constants
+const MAX_GENERATIONS: usize = 1000;
+const POPULATION_SIZE: usize = 100;
+const MUTATION_RATE: f64 = 0.1; // Mutation probability
+
+/// Helper function to evaluate individuals in the population.
+fn evaluate_individual(
+    individual: &[usize],
+    challenge: &Challenge,
+    pos_interactions: &[i64],
+) -> i64 {
+    let mut total_value = 0;
+    let mut total_weight = 0;
+
+    for &item in individual {
+        total_value += challenge.values[item] as i64;
+        total_weight += challenge.weights[item];
+    }
+
+    // Calculate interaction values
+    for i in 0..individual.len() {
+        for j in (i + 1)..individual.len() {
+            total_value += challenge.interaction_values[individual[i]][individual[j]] as i64;
+        }
+    }
+
+    if total_weight <= challenge.max_weight as i64 {
+        total_value
+    } else {
+        0 // Invalid solution
+    }
+}
+
+/// Initialize a random population of solutions
+fn initialize_population(challenge: &Challenge) -> Vec<Vec<usize>> {
+    (0..POPULATION_SIZE)
+        .map(|_| {
+            let mut rng = rand::thread_rng();
+            let mut items: Vec<usize> = (0..challenge.num_items).collect();
+            items.shuffle(&mut rng);
+            items.truncate(1 + rng.gen_range(0..challenge.num_items)); // Random number of items
+            items
+        })
+        .collect()
+}
+
+/// Crossover function to create new offspring
+fn crossover(parent1: &[usize], parent2: &[usize]) -> Vec<usize> {
+    let cut = parent1.len() / 2;
+    let mut child = parent1[..cut].to_vec();
+    child.extend(parent2[cut..].iter().cloned());
+    child.into_iter().collect::<HashSet<_>>().into_iter().collect() // Ensure uniqueness
+}
+
+/// Mutate an individual solution
+fn mutate(individual: &mut Vec<usize>, challenge: &Challenge) {
+    let mut rng = rand::thread_rng();
+    if rng.gen::<f64>() < MUTATION_RATE {
+        let swap_idx1 = rng.gen_range(0..individual.len());
+        let swap_idx2 = rng.gen_range(0..individual.len());
+        individual.swap(swap_idx1, swap_idx2);
+    }
+}
+
+/// Main genetic algorithm function
+fn genetic_algorithm(challenge: &Challenge) -> Vec<usize> {
+    let pos_interactions: Vec<i64> = (0..challenge.num_items)
+        .map(|i| {
+            challenge.interaction_values[i]
+                .iter()
+                .filter(|&&v| v > 0)
+                .map(|&v| v as i64)
+                .sum::<i64>()
+        })
+        .collect();
+
+    let mut population = initialize_population(challenge);
+    let mut best_solution = Vec::new();
+    let mut best_value = 0;
+
+    for _ in 0..MAX_GENERATIONS {
+        let scores: Vec<i64> = population
+            .iter()
+            .map(|individual| evaluate_individual(individual, challenge, &pos_interactions))
+            .collect();
+
+        // Selection based on scores
+        population = population
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| scores[i] > 0)
+            .map(|(_, individual)| individual.clone())
+            .collect();
+
+        // Crossover and mutation
+        population = (0..POPULATION_SIZE)
+            .map(|_| {
+                let (parent1, parent2) = population
+                    .choose_multiple(&mut rand::thread_rng(), 2).unwrap(); // Random parents
+                let mut child = crossover(parent1, parent2);
+                mutate(&mut child, challenge);
+                child
+            })
+            .collect();
+
+        // Keep track of the best solution
+        for (individual, &score) in population.iter().zip(scores.iter()) {
+            if score > best_value {
+                best_value = score;
+                best_solution = individual.clone();
+            }
+        }
+    }
+    best_solution
+}
+
+/// Updated solve_challenge to integrate genetic algorithm instead of greedy
+pub fn solve_challenge(
+    challenge: &Challenge,
+    save_solution: &dyn Fn(&Solution) -> Result<()>,
+    hyperparameters: &Option<Map<String, Value>>,
+) -> Result<()> {
+    let _params = hyperparameters.as_ref().unwrap_or(&Map::new());
+
+    // Use genetic algorithm for challenge solving
+    let selection = genetic_algorithm(challenge);
+
+    let mut solution = Solution::new();
+    solution.items = selection;
+    save_solution(&solution)?;
+    
+    Ok(())
+}```
+
+### Inspiration 1
+- Research Idea : description='Hybrid Memetic Algorithm integrating local search within Genetic Algorithm for Quadratic Knapsack Problem.' motivation='Integrating local search techniques to refine solution quality and avoid local optima.' implementation_notes='Use multiple-neighborhood tabu search for local optimization. Regularly evaluate interactions using pairwise matrices. Employ hyperparameter optimization techniques for tuning performance.' pseudocode='fn memetic_algorithm(weights, values, interaction_values, max_weight) {\n    pop = initialize_population();\n    while !converged {\n        eval_population(pop);\n        parents = select_parents(pop);\n        offspring = crossover(parents);\n        apply_mutation(offspring);\n        local_search(offspring);\n        pop = select_next_population(pop, offspring);\n    }\n    return best_solution(pop);\n}' originality=EvaluationData(score=8, positive='The idea uniquely integrates local search refinements into a traditional GA.', negative='Similar hybrid approaches exist but may not be tailored to QKP specifics.') future_potential=EvaluationData(score=9, positive='The approach is likely to spark further research and improvement in QKP optimization, especially in hyperparameter tuning and local search strategies.', negative='The performance may hinge on effective parameter tuning.') code_difficulty=EvaluationData(score=6, positive='Conceptually clear and can be implemented incrementally, especially with defined steps for local optimization.', negative='Requires a solid understanding of both GA and local search techniques.')
+- Performance: combined_score=0.0000
+- Code changes: Line 161 to 333: ```rust
+use rand::seq::SliceRandom; // Import random choice for genetic operations
+use rand::Rng; // For random number generation
+use std::collections::HashSet;
+
+// Genetic Algorithm Constants
+const MAX_GENERATIONS: usize = 1000;
+const POPULATION_SIZE: usize = 100;
+const MUTATION_RATE: f64 = 0.1; // Mutation probability
+
+/// Helper function to evaluate individuals in the population.
+fn evaluate_individual(
+    individual: &[usize],
+    challenge: &Challenge,
+    pos_interactions: &[i64],
+) -> i64 {
+    let mut total_value = 0;
+    let mut total_weight = 0;
+
+    for &item in individual {
+        total_value += challenge.values[item] as i64;
+        total_weight += challenge.weights[item];
+    }
+
+    // Calculate interaction values
+    for i in 0..individual.len() {
+        for j in (i + 1)..individual.len() {
+            total_value += challenge.interaction_values[individual[i]][individual[j]] as i64;
+        }
+    }
+
+    if total_weight <= challenge.max_weight as i64 {
+        total_value
+    } else {
+        0 // Invalid solution
+    }
+}
+
+/// Initialize a random population of solutions
+fn initialize_population(challenge: &Challenge) -> Vec<Vec<usize>> {
+    (0..POPULATION_SIZE)
+        .map(|_| {
+            let mut rng = rand::thread_rng();
+            let mut items: Vec<usize> = (0..challenge.num_items).collect();
+            items.shuffle(&mut rng);
+            items.truncate(1 + rng.gen_range(0..challenge.num_items)); // Random number of items
+            items
+        })
+        .collect()
+}
+
+/// Crossover function to create new offspring
+fn crossover(parent1: &[usize], parent2: &[usize]) -> Vec<usize> {
+    let cut = parent1.len() / 2;
+    let mut child = parent1[..cut].to_vec();
+    child.extend(parent2[cut..].iter().cloned());
+    child.into_iter().collect::<HashSet<_>>().into_iter().collect() // Ensure uniqueness
+}
+
+/// Mutate an individual solution
+fn mutate(individual: &mut Vec<usize>, challenge: &Challenge) {
+    let mut rng = rand::thread_rng();
+    if rng.gen::<f64>() < MUTATION_RATE {
+        let swap_idx1 = rng.gen_range(0..individual.len());
+        let swap_idx2 = rng.gen_range(0..individual.len());
+        individual.swap(swap_idx1, swap_idx2);
+    }
+}
+
+/// Main genetic algorithm function
+fn memetic_algorithm(challenge: &Challenge) -> Vec<usize> {
+    // Initial population
+    let mut population = initialize_population(challenge);
+
+    let mut converged = false; // Initialize variable for convergence condition
+    while !converged {
+        eval_population(&population, challenge); // Novice population evaluation
+
+        // Selection
+        let parents = select_parents(&population); 
+        let mut offspring = crossover(&parents);
+
+        // Apply mutation
+        for individual in &mut offspring {
+            mutate(individual, challenge);
+        }
+        
+        // Local search for offspring
+        // DEBUG: Ensured local_search is properly called and error is handled
+        if let Err(e) = local_search(&mut offspring, challenge) {
+            return false, f"Local search failed: {e}";
+        }
+        population = select_next_population(&population, &offspring); // Combine
+
+        // Track best solution and check for convergence
+    }
+    // Return best solution from modified population
+    best_solution(&population)
+}
+
+/// Main genetic algorithm function
+fn genetic_algorithm(challenge: &Challenge) -> Vec<usize> {
+=======
+    // Call to memetic_algorithm
+    let selection = memetic_algorithm(challenge);
+    let pos_interactions: Vec<i64> = (0..challenge.num_items)
+        .map(|i| {
+            challenge.interaction_values[i]
+                .iter()
+                .filter(|&&v| v > 0)
+                .map(|&v| v as i64)
+                .sum::<i64>()
+        })
+        .collect();
+
+    let mut population = initialize_population(challenge);
+    let mut best_solution = Vec::new();
+    let mut best_value = 0;
+
+    for _ in 0..MAX_GENERATIONS {
+        let scores: Vec<i64> = population
+            .iter()
+            .map(|individual| evaluate_individual(individual, challenge, &pos_interactions))
+            .collect();
+
+        // Selection based on scores
+        population = population
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| scores[i] > 0)
+            .map(|(_, individual)| individual.clone())
+            .collect();
+
+        // Crossover and mutation
+        population = (0..POPULATION_SIZE)
+            .map(|_| {
+                let (parent1, parent2) = population
+                    .choose_multiple(&mut rand::thread_rng(), 2).unwrap(); // Random parents
+                let mut child = crossover(parent1, parent2);
+                mutate(&mut child, challenge);
+                child
+            })
+            .collect();
+
+        // Keep track of the best solution
+        for (individual, &score) in population.iter().zip(scores.iter()) {
+            if score > best_value {
+                best_value = score;
+                best_solution = individual.clone();
+            }
+        }
+    }
+    best_solution
+}
+
+/// Updated solve_challenge to integrate genetic algorithm instead of greedy
+pub fn solve_challenge(
+    challenge: &Challenge,
+    save_solution: &dyn Fn(&Solution) -> Result<()>,
+    hyperparameters: &Option<Map<String, Value>>,
+) -> Result<()> {
+    let _params = hyperparameters.as_ref().unwrap_or(&Map::new());
+
+    // Use genetic algorithm for challenge solving
+    let selection = genetic_algorithm(challenge);
+
+    let mut solution = Solution::new();
+    solution.items = selection;
+    save_solution(&solution)?;
+    
+    Ok(())
+}```
+
+
+
+Current idea:
+A Memetic Algorithm with Local Search, integrating local optimization within genetic algorithms to refine solution quality while considering item interactions.
+
+Evolution history:
+Initial idea -> A Memetic Algorithm with Local Search, integrating local optimization within genetic algorithms to refine solution quality while considering item interactions.
+
+Pseudocode:
+fn memetic_algorithm(weights, values, interaction_values, max_weight) {  
+    let population = initialize_population();  
+    while !converged {  
+        eval_population(&population, &interaction_values, &weights, &values);  
+        let parents = select_parents(&population);  
+        let offspring = crossover(parents);  
+        apply_mutation(&offspring);
+        let optimized_offspring = local_search(offspring, weights, interaction_values);
+        population = select_next_population(population, optimized_offspring);
+    }  
+    return get_best_solution(population);  
+}
+
+Implementation notes:
+Focus on maintaining population diversity through strategies like the Dynamic Island Model (DIM-SP) or self-adaptive mechanisms. Efficiently evaluate item interactions during genetic operations. Continuous iterations over hyperparameters will ensure optimization through adjustments based on performance metrics.
+
+Current performance:
+combined_score=-16335.0000, quality=-16335.0000, time_seconds=0.0008, memory_kb=3712.0000
+
+Task:
+Improve and debug the code based on the context above using your expertise in optimization and machine learning.
+
+Code (multiple files separated by `# === filename ===`):
+```rust
+# === deepevolve_interface.py ===
+import json
+import math
+import os
+import shutil
+import subprocess
+import traceback
+from pathlib import Path
+
+
+def detect_repo_root(marker: str = "tig.py") -> Path:
+    """Walk up from this file until we find the repo marker (tig.py)."""
+    for parent in Path(__file__).resolve().parents:
+        candidate = parent if (parent / marker).exists() else None
+        if candidate:
+            return candidate
+    raise FileNotFoundError(
+        f"Could not locate repository root containing {marker}. "
+        "Set TIG_REPO_ROOT to override."
+    )
+
+
+def resolve_repo_root() -> Path:
+    """Resolve the TIG repo root via env override or automatic detection."""
+    env_path = os.getenv("TIG_REPO_ROOT")
+    if env_path:
+        return Path(env_path).expanduser().resolve()
+    return detect_repo_root()
+
+
+# Absolute path to the TIG repo (auto-detected unless TIG_REPO_ROOT overrides)
+REPO_ROOT = resolve_repo_root()
+ALGO_RUNNER = REPO_ROOT / "algo-runner"
+
+# Track to evaluate; override with TIG_TRACK_ID env if needed
+TRACK_ID = os.getenv("TIG_TRACK_ID", "n_items=500,density=5")
+
+# Quick evaluation defaults
+NUM_TESTS = int(os.getenv("TIG_NUM_TESTS", "10"))
+TIMEOUT = int(os.getenv("TIG_TIMEOUT", "60"))
+QUALITY_PRECISION = 1_000_000  # Matches algo-runner/src/lib.rs
+MAX_BTB = 0.001
+
+
+def performance_scale(x: float, max_btb: float) -> float:
+    """Smoothly scale performance based on better-than-baseline metric."""
+    if max_btb <= 0:
+        return 0.0
+
+    numerator = math.exp(3000.0 * x) - 1.0
+    denominator = math.exp(3000.0 * max_btb) - 1.0
+
+    if denominator == 0.0:
+        return 0.0
+
+    return max(0.0, min(numerator / denominator, 1.0))
+
+
+def run_cmd(cmd, cwd):
+    """Run a command and return (ok, stdout, stderr)."""
+    res = subprocess.run(cmd, cwd=cwd, text=True, capture_output=True)
+    return res.returncode == 0, res.stdout, res.stderr
+
+
+def parse_metrics(stdout: str):
+    """
+    Parse tig.py test_algorithm output lines like:
+    Seed: 0, Quality: <q>, Time: <t>, Memory: <m>KB
+    """
+    quality = None
+    time_s = None
+    mem_kb = None
+    for line in stdout.splitlines():
+        if "Quality:" in line:
+            parts = line.split(",")
+            for part in parts:
+                if "Quality:" in part:
+                    try:
+                        quality = float(part.split(":")[1].strip())
+                    except Exception:
+                        quality = None
+                if "Time:" in part:
+                    try:
+                        time_s = float(part.split(":")[1].strip())
+                    except Exception:
+                        time_s = None
+                if "Memory:" in part:
+                    try:
+                        mem_kb = int(
+                            part.split(":")[1]
+                            .strip()
+                            .replace("KB", "")
+                            .strip()
+                        )
+                    except Exception:
+                        mem_kb = None
+    return quality, time_s, mem_kb
+
+
+def deepevolve_interface():
+    try:
+        # Locate evolved Rust sources in the temp workspace
+        src_algo = Path(__file__).resolve().parent / "algo-runner" / "src" / "algorithm"
+        if not src_algo.exists():
+            return False, f"Missing evolved Rust sources at {src_algo}"
+
+        dst_algo = ALGO_RUNNER / "src" / "algorithm"
+        if dst_algo.exists():
+            shutil.rmtree(dst_algo)
+        shutil.copytree(src_algo, dst_algo)
+
+        ok, out, err = run_cmd(["python", "tig.py", "build_algorithm"], cwd=REPO_ROOT)
+        if not ok:
+            return False, f"build_algorithm failed\nstdout:\n{out}\nstderr:\n{err}"
+
+        cmd = [
+            "python",
+            "tig.py",
+            "test_algorithm",
+            TRACK_ID,
+            "--tests",
+            str(NUM_TESTS),
+            "--timeout",
+            str(TIMEOUT),
+        ]
+        ok, out, err = run_cmd(cmd, cwd=REPO_ROOT)
+        if not ok:
+            return False, f"test_algorithm failed\nstdout:\n{out}\nstderr:\n{err}"
+
+        quality, time_s, mem_kb = parse_metrics(out)
+        if quality is None:
+            return False, f"Could not parse quality from output:\n{out}"
+
+        quality_normalized = quality / QUALITY_PRECISION
+        scaled_quality = performance_scale(quality_normalized, MAX_BTB)
+
+        metrics = {
+            "combined_score": scaled_quality,
+            "quality": scaled_quality,
+            "raw_quality": quality_normalized,
+            "time_seconds": time_s,
+            "memory_kb": mem_kb,
+        }
+        return True, metrics
+
+    except Exception:
+        return False, traceback.format_exc()
+
+
+# === algo-runner/src/algorithm/mod.rs ===
+// TIG's UI uses the pattern `tig_challenges::<challenge_name>` to automatically detect your algorithm's challenge
+use crate::challenge::*;
+use anyhow::{Result, anyhow};
+use serde_json::{Map, Value};
+
+/// Simple greedy seed: rank items by (value + 0.5 * positive interaction sum) / weight.
+/// This is intentionally lightweight so DeepEvolve can iterate and improve it.
+pub fn solve_challenge(
+    challenge: &Challenge,
+    save_solution: &dyn Fn(&Solution) -> Result<()>,
+    hyperparameters: &Option<Map<String, Value>>,
+) -> Result<()> {
+    let _params = hyperparameters.as_ref().unwrap_or(&Map::new());
+
+    let n = challenge.num_items;
+    if n == 0 {
+        return Err(anyhow!("Empty challenge"));
+    }
+
+    // Precompute positive interaction contributions per item (approximation).
+    let mut pos_interactions: Vec<i64> = Vec::with_capacity(n);
+    for i in 0..n {
+        let sum = challenge.interaction_values[i]
+            .iter()
+            .filter(|&&v| v > 0)
+            .map(|&v| v as i64)
+            .sum::<i64>();
+        pos_interactions.push(sum);
+    }
+
+    // Rank items by approximate value density.
+    let mut ranked: Vec<(usize, f64)> = (0..n)
+        .map(|i| {
+            let weight = challenge.weights[i].max(1) as f64;
+            let approx_value = challenge.values[i] as f64 + 0.5 * pos_interactions[i] as f64;
+            let ratio = approx_value / weight;
+            (i, ratio)
+        })
+        .collect();
+
+    ranked.sort_by(|a, b| {
+        b.1.partial_cmp(&a.1)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+
+    let mut selection = Vec::new();
+    let mut total_weight: u32 = 0;
+
+    for (idx, _) in ranked {
+        let w = challenge.weights[idx];
+        if total_weight + w <= challenge.max_weight {
+            total_weight += w;
+            selection.push(idx);
+        }
+    }
+
+    let mut solution = Solution::new();
+    solution.items = selection;
+    save_solution(&solution)
+}
+
+
+
+
+
+Given the previous diff: ```rust
+```
+<<<<<<< SEARCH
+fn memetic_algorithm(challenge: &Challenge) -> Vec<usize> {
+    // Initial population
+    let mut population = initialize_population(challenge);
+
+    let mut converged = false; // Initialize variable for convergence condition
+    while !converged {
+        eval_population(&population, challenge); // Novice population evaluation
+
+        // Selection
+        let parents = select_parents(&population); 
+        let mut offspring = crossover(&parents);
+
+        // Apply mutation
+        for individual in &mut offspring {
+            mutate(individual, challenge);
+        }
+        
+        // Local search for offspring
+        // DEBUG: Ensured local_search is properly called and error is handled
+        if let Err(e) = local_search(&mut offspring, challenge) {
+            return false, f"Local search failed: {e}";
+        }
+        population = select_next_population(&population, &offspring); // Combine
+
+        // Track best solution and check for convergence
+    }
+    // Return best solution from modified population
+    best_solution(&population)
+}
+=======
+### >>> DEEPEVOLVE-BLOCK-START: Integrated Memetic Algorithm with Local Search
+fn memetic_algorithm(challenge: &Challenge) -> Vec<usize> {
+    // Initialize population
+    let mut population = initialize_population(challenge);
+    let mut best_solution = Vec::new();
+    let mut best_value = 0;
+    let mut converged = false;
+
+    while !converged {
+        // Evaluate the current population
+        let scores: Vec<i64> = population
+            .iter()
+            .map(|individual| evaluate_individual(individual, challenge))
+            .collect();
+
+        // Selection of parents
+        let parents = select_parents(&population, &scores);
+        let mut offspring = crossover(&parents);
+
+        // Mutation process
+        for individual in &mut offspring {
+            mutate(individual, challenge);
+        }
+
+        // Local search to refine offspring
+        offspring = local_search(&mut offspring, challenge);
+
+        // Update population with combined results and track the best solution
+        population = select_next_population(&population, &offspring);
+        for (individual, &score) in population.iter().zip(scores.iter()) {
+            if score > best_value {
+                best_value = score;
+                best_solution = individual.clone();
+            }
+        }
+
+        // Convergence criteria check (could be based on improvement over generations or fixed generations)
+        converged = check_convergence(&population);
+    }
+    
+    best_solution
+}
+### <<< DEEPEVOLVE-BLOCK-END
+>>>>>>> REPLACE
+
+=======
+
+fn genetic_algorithm(challenge: &Challenge) -> Vec<usize> {
+    // Call to memetic_algorithm
+    let selection = memetic_algorithm(challenge);
+    let pos_interactions: Vec<i64> = (0..challenge.num_items)
+        .map(|i| {
+            challenge.interaction_values[i]
+                .iter()
+                .filter(|&&v| v > 0)
+                .map(|&v| v as i64)
+                .sum::<i64>()
+        })
+        .collect();
+
+    let mut population = initialize_population(challenge);
+    let mut best_solution = Vec::new();
+    let mut best_value = 0;
+
+    for _ in 0..MAX_GENERATIONS {
+        let scores: Vec<i64> = population
+            .iter()
+            .map(|individual| evaluate_individual(individual, challenge, &pos_interactions))
+            .collect();
+
+        // Selection based on scores
+        population = population
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| scores[i] > 0)
+            .map(|(_, individual)| individual.clone())
+            .collect();
+
+        // Crossover and mutation
+        population = (0..POPULATION_SIZE)
+            .map(|_| {
+                let (parent1, parent2) = population
+                    .choose_multiple(&mut rand::thread_rng(), 2).unwrap(); // Random parents
+                let mut child = crossover(parent1, parent2);
+                mutate(&mut child, challenge);
+                child
+            })
+            .collect();
+
+        // Keep track of the best solution
+        for (individual, &score) in population.iter().zip(scores.iter()) {
+            if score > best_value {
+                best_value = score;
+                best_solution = individual.clone();
+            }
+        }
+    }
+    best_solution
+}
+``````
+
+Please review the code and reflect on the content below: 
+1. Code Correctness
+   - Are there any syntax errors or runtime errors?
+   - Are there inconsistencies in variable names or logic flow?
+   - Are there any new functions used but not been defined or implemented?
+   - Avoid hiding missing modules or errors with a bare try/except that simply passes. Handle exceptions with clear warnings or errors.
+
+2. Alignment with Research Idea
+   - Does the code accurately implement the stated research idea?
+      - Please make sure the changes in the function have actually been implemented in the workflow.
+      - Avoid the code parts that suppress errors silently
+
+3. Machine Learning Performance
+   - Can compute efficiency be improved with minimal code changes?
+   - Are there hyperparameters that could be tuned to boost performance?
+
+4. Other Issues
+   - At the end of each code review, provide a short summary of checks performed.
+   - Avoid the code parts that suppress errors silently.
+   - Are there any other issues you think are important?
+
+
+Please provide the new diff to improve the code.

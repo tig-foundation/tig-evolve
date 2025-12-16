@@ -1,0 +1,29 @@
+{
+  "feature_map": {
+    "0-3-0": "root",
+    "9-0-7": "fcdeec5f-3b0e-4f29-826f-c4cf63f074c0",
+    "9-9-9": "c5447a3c-eb69-497d-a1ff-8e5b0fa7bf89",
+    "9-8-4": "b44650dd-20dc-4163-be89-48327d21b6bc"
+  },
+  "islands": [
+    [
+      "root",
+      "c5447a3c-eb69-497d-a1ff-8e5b0fa7bf89",
+      "fcdeec5f-3b0e-4f29-826f-c4cf63f074c0",
+      "b44650dd-20dc-4163-be89-48327d21b6bc"
+    ]
+  ],
+  "archive": [
+    "root",
+    "c5447a3c-eb69-497d-a1ff-8e5b0fa7bf89",
+    "fcdeec5f-3b0e-4f29-826f-c4cf63f074c0",
+    "b44650dd-20dc-4163-be89-48327d21b6bc"
+  ],
+  "best_program_id": "fcdeec5f-3b0e-4f29-826f-c4cf63f074c0",
+  "last_iteration": 3,
+  "current_island": 0,
+  "island_generations": [
+    3
+  ],
+  "last_migration_generation": 0
+}

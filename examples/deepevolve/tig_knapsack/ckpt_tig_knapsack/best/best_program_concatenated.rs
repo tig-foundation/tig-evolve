@@ -1,13 +1,41 @@
 # === deepevolve_interface.py ===
 import json
+import math
 import os
 import shutil
 import subprocess
 import traceback
 from pathlib import Path
 
-# Absolute path to the TIG repo on this machine
-REPO_ROOT = Path("/root/tig-evolve")
+
+def detect_repo_root(marker: str = "tig.py") -> Path:
+    """Walk up from this file until we find the repo marker (tig.py)."""
+    for parent in Path(__file__).resolve().parents:  # DEBUG: Ensure the search for parent directories is accurate
+        # DEBUG: Check if tig.py exists in the candidate path
+        candidate = parent if (parent / marker).exists() else None
+        if candidate:
+            return candidate
+    # DEBUG: Providing clearer error to help with debugging
+    raise FileNotFoundError(  # DEBUG: Provide a clearer error message for debugging
+        f"Could not locate repository root containing {marker}. "
+        f"Searched up to: {Path(__file__).resolve().parents}. "
+        "Set TIG_REPO_ROOT to override."
+    )
+    # DEBUG: Adjusted indentation to fix unexpected indent error
+    if candidate:
+        return candidate
+
+
+def resolve_repo_root() -> Path:
+    """Resolve the TIG repo root via env override or automatic detection."""
+    env_path = os.getenv("TIG_REPO_ROOT")
+    if env_path:
+        return Path(env_path).expanduser().resolve()
+    return detect_repo_root()
+
+
+# Absolute path to the TIG repo (auto-detected unless TIG_REPO_ROOT overrides)
+REPO_ROOT = resolve_repo_root()
 ALGO_RUNNER = REPO_ROOT / "algo-runner"
 
 # Track to evaluate; override with TIG_TRACK_ID env if needed
@@ -16,6 +44,22 @@ TRACK_ID = os.getenv("TIG_TRACK_ID", "n_items=500,density=5")
 # Quick evaluation defaults
 NUM_TESTS = int(os.getenv("TIG_NUM_TESTS", "10"))
 TIMEOUT = int(os.getenv("TIG_TIMEOUT", "60"))
+QUALITY_PRECISION = 1_000_000  # Matches algo-runner/src/lib.rs
+MAX_BTB = 0.001
+
+
+def performance_scale(x: float, max_btb: float) -> float:
+    """Smoothly scale performance based on better-than-baseline metric."""
+    if max_btb <= 0:
+        return 0.0
+
+    numerator = math.exp(3000.0 * x) - 1.0
+    denominator = math.exp(3000.0 * max_btb) - 1.0
+
+    if denominator == 0.0:
+        return 0.0
+
+    return max(0.0, min(numerator / denominator, 1.0))
 
 
 def run_cmd(cmd, cwd):
@@ -71,9 +115,13 @@ def deepevolve_interface():
             shutil.rmtree(dst_algo)
         shutil.copytree(src_algo, dst_algo)
 
-        ok, out, err = run_cmd(["python", "tig.py", "build_algorithm"], cwd=REPO_ROOT)
-        if not ok:
-            return False, f"build_algorithm failed\nstdout:\n{out}\nstderr:\n{err}"
+        # DEBUG: Ensured that the path to tig.py is correctly set in the REPO_ROOT and accounted for missing file
+        tig_path = REPO_ROOT / "tig.py"
+        if not tig_path.exists():  # DEBUG: Added a check for tig.py existence
+            return False, f"Missing tig.py at {tig_path}"
+        ok, out, err = run_cmd(["python", str(tig_path), "build_algorithm"], cwd=REPO_ROOT)
+        if not ok:  # DEBUG: Check if the build process failed
+            return False, f"build_algorithm failed\nstdout:\n{out}\nstderr:\n{err}. Check if tig.py is properly located at {tig_path}"
 
         cmd = [
             "python",
@@ -93,9 +141,13 @@ def deepevolve_interface():
         if quality is None:
             return False, f"Could not parse quality from output:\n{out}"
 
+        quality_normalized = quality / QUALITY_PRECISION
+        scaled_quality = performance_scale(quality_normalized, MAX_BTB)
+
         metrics = {
-            "combined_score": quality,
-            "quality": quality,
+            "combined_score": scaled_quality,
+            "quality": scaled_quality,
+            "raw_quality": quality_normalized,
             "time_seconds": time_s,
             "memory_kb": mem_kb,
         }
@@ -105,15 +157,129 @@ def deepevolve_interface():
         return False, traceback.format_exc()
 
 
-
 # === algo-runner/src/algorithm/mod.rs ===
-// TIG's UI uses the pattern `tig_challenges::<challenge_name>` to automatically detect your algorithm's challenge
-use crate::challenge::*;
-use anyhow::{Result, anyhow};
-use serde_json::{Map, Value};
+### >>> DEEPEVOLVE-BLOCK-START: Evolving a Genetic Algorithm with Interaction Scoring
+use rand::seq::SliceRandom; // Import random choice for genetic operations
+use rand::Rng; // For random number generation
+use std::collections::HashSet;
 
-/// Simple greedy seed: rank items by (value + 0.5 * positive interaction sum) / weight.
-/// This is intentionally lightweight so DeepEvolve can iterate and improve it.
+// Genetic Algorithm Constants
+const MAX_GENERATIONS: usize = 1000;
+const POPULATION_SIZE: usize = 100;
+const MUTATION_RATE: f64 = 0.1; // Mutation probability
+
+/// Helper function to evaluate individuals in the population.
+fn evaluate_individual(
+    individual: &[usize],
+    challenge: &Challenge,
+    pos_interactions: &[i64],
+) -> i64 {
+    let mut total_value = 0;
+    let mut total_weight = 0;
+
+    for &item in individual {
+        total_value += challenge.values[item] as i64;
+        total_weight += challenge.weights[item];
+    }
+
+    // Calculate interaction values
+    for i in 0..individual.len() {
+        for j in (i + 1)..individual.len() {
+            total_value += challenge.interaction_values[individual[i]][individual[j]] as i64;
+        }
+    }
+
+    if total_weight <= challenge.max_weight as i64 {
+        total_value
+    } else {
+        0 // Invalid solution
+    }
+}
+
+/// Initialize a random population of solutions
+fn initialize_population(challenge: &Challenge) -> Vec<Vec<usize>> {
+    (0..POPULATION_SIZE)
+        .map(|_| {
+            let mut rng = rand::thread_rng();
+            let mut items: Vec<usize> = (0..challenge.num_items).collect();
+            items.shuffle(&mut rng);
+            items.truncate(1 + rng.gen_range(0..challenge.num_items)); // Random number of items
+            items
+        })
+        .collect()
+}
+
+/// Crossover function to create new offspring
+fn crossover(parent1: &[usize], parent2: &[usize]) -> Vec<usize> {
+    let cut = parent1.len() / 2;
+    let mut child = parent1[..cut].to_vec();
+    child.extend(parent2[cut..].iter().cloned());
+    child.into_iter().collect::<HashSet<_>>().into_iter().collect() // Ensure uniqueness
+}
+
+/// Mutate an individual solution
+fn mutate(individual: &mut Vec<usize>, challenge: &Challenge) {
+    let mut rng = rand::thread_rng();
+    if rng.gen::<f64>() < MUTATION_RATE {
+        let swap_idx1 = rng.gen_range(0..individual.len());
+        let swap_idx2 = rng.gen_range(0..individual.len());
+        individual.swap(swap_idx1, swap_idx2);
+    }
+}
+
+/// Main genetic algorithm function
+fn genetic_algorithm(challenge: &Challenge) -> Vec<usize> {
+    let pos_interactions: Vec<i64> = (0..challenge.num_items)
+        .map(|i| {
+            challenge.interaction_values[i]
+                .iter()
+                .filter(|&&v| v > 0)
+                .map(|&v| v as i64)
+                .sum::<i64>()
+        })
+        .collect();
+
+    let mut population = initialize_population(challenge);
+    let mut best_solution = Vec::new();
+    let mut best_value = 0;
+
+    for _ in 0..MAX_GENERATIONS {
+        let scores: Vec<i64> = population
+            .iter()
+            .map(|individual| evaluate_individual(individual, challenge, &pos_interactions))
+            .collect();
+
+        // Selection based on scores
+        population = population
+            .iter()
+            .enumerate()
+            .filter(|&(i, _)| scores[i] > 0)
+            .map(|(_, individual)| individual.clone())
+            .collect();
+
+        // Crossover and mutation
+        population = (0..POPULATION_SIZE)
+            .map(|_| {
+                let (parent1, parent2) = population
+                    .choose_multiple(&mut rand::thread_rng(), 2).unwrap(); // Random parents
+                let mut child = crossover(parent1, parent2);
+                mutate(&mut child, challenge);
+                child
+            })
+            .collect();
+
+        // Keep track of the best solution
+        for (individual, &score) in population.iter().zip(scores.iter()) {
+            if score > best_value {
+                best_value = score;
+                best_solution = individual.clone();
+            }
+        }
+    }
+    best_solution
+}
+
+/// Updated solve_challenge to integrate genetic algorithm instead of greedy
 pub fn solve_challenge(
     challenge: &Challenge,
     save_solution: &dyn Fn(&Solution) -> Result<()>,
@@ -121,50 +287,16 @@ pub fn solve_challenge(
 ) -> Result<()> {
     let _params = hyperparameters.as_ref().unwrap_or(&Map::new());
 
-    let n = challenge.num_items;
-    if n == 0 {
-        return Err(anyhow!("Empty challenge"));
-    }
-
-    // Precompute positive interaction contributions per item (approximation).
-    let mut pos_interactions: Vec<i64> = Vec::with_capacity(n);
-    for i in 0..n {
-        let sum = challenge.interaction_values[i]
-            .iter()
-            .filter(|&&v| v > 0)
-            .map(|&v| v as i64)
-            .sum::<i64>();
-        pos_interactions.push(sum);
-    }
-
-    // Rank items by approximate value density.
-    let mut ranked: Vec<(usize, f64)> = (0..n)
-        .map(|i| {
-            let weight = challenge.weights[i].max(1) as f64;
-            let approx_value = challenge.values[i] as f64 + 0.5 * pos_interactions[i] as f64;
-            let ratio = approx_value / weight;
-            (i, ratio)
-        })
-        .collect();
-
-    ranked.sort_by(|a, b| {
-        b.1.partial_cmp(&a.1)
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
-
-    let mut selection = Vec::new();
-    let mut total_weight: u32 = 0;
-
-    for (idx, _) in ranked {
-        let w = challenge.weights[idx];
-        if total_weight + w <= challenge.max_weight {
-            total_weight += w;
-            selection.push(idx);
-        }
-    }
+    // Use genetic algorithm for challenge solving
+    let selection = genetic_algorithm(challenge);
 
     let mut solution = Solution::new();
     solution.items = selection;
-    save_solution(&solution)
+    save_solution(&solution)?;
+    
+    Ok(())
 }
+### <<< DEEPEVOLVE-BLOCK-END
+}
+
 

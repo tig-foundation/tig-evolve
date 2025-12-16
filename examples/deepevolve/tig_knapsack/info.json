@@ -1,8 +1,8 @@
 {
   "problem": {
     "name": "tig_knapsack",
-    "description": "Evolve a Rust solver for TIG quadratic knapsack (n_items=500,density=5)",
-    "metric": "Maximize TIG quality score; secondary minimize runtime/memory",
+    "description": "Evolve a Rust solver for quadratic knapsack problem",
+    "metric": "Maximize TIG quality score; secondary minimize runtime and memory",
     "interface": "deepevolve_interface.py",
     "language": "rust"
   },

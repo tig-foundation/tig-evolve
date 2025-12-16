@@ -1,23 +1,26 @@
 {
   "feature_map": {
-    "0-0-0": "root",
-    "9-0-9": "fcdeec5f-3b0e-4f29-826f-c4cf63f074c0"
+    "0-9-0": "root",
+    "9-0-7": "fcdeec5f-3b0e-4f29-826f-c4cf63f074c0",
+    "9-3-9": "c5447a3c-eb69-497d-a1ff-8e5b0fa7bf89"
   },
   "islands": [
     [
       "root",
+      "c5447a3c-eb69-497d-a1ff-8e5b0fa7bf89",
       "fcdeec5f-3b0e-4f29-826f-c4cf63f074c0"
     ]
   ],
   "archive": [
     "root",
+    "c5447a3c-eb69-497d-a1ff-8e5b0fa7bf89",
     "fcdeec5f-3b0e-4f29-826f-c4cf63f074c0"
   ],
   "best_program_id": "fcdeec5f-3b0e-4f29-826f-c4cf63f074c0",
-  "last_iteration": 1,
+  "last_iteration": 2,
   "current_island": 0,
   "island_generations": [
-    1
+    2
   ],
   "last_migration_generation": 0
 }

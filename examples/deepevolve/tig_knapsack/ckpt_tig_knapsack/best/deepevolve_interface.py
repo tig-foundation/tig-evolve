@@ -1,12 +1,40 @@
 import json
+import math
 import os
 import shutil
 import subprocess
 import traceback
 from pathlib import Path
 
-# Absolute path to the TIG repo on this machine
-REPO_ROOT = Path("/root/tig-evolve")
+
+def detect_repo_root(marker: str = "tig.py") -> Path:
+    """Walk up from this file until we find the repo marker (tig.py)."""
+    for parent in Path(__file__).resolve().parents:  # DEBUG: Ensure the search for parent directories is accurate
+        # DEBUG: Check if tig.py exists in the candidate path
+        candidate = parent if (parent / marker).exists() else None
+        if candidate:
+            return candidate
+    # DEBUG: Providing clearer error to help with debugging
+    raise FileNotFoundError(  # DEBUG: Provide a clearer error message for debugging
+        f"Could not locate repository root containing {marker}. "
+        f"Searched up to: {Path(__file__).resolve().parents}. "
+        "Set TIG_REPO_ROOT to override."
+    )
+    # DEBUG: Adjusted indentation to fix unexpected indent error
+    if candidate:
+        return candidate
+
+
+def resolve_repo_root() -> Path:
+    """Resolve the TIG repo root via env override or automatic detection."""
+    env_path = os.getenv("TIG_REPO_ROOT")
+    if env_path:
+        return Path(env_path).expanduser().resolve()
+    return detect_repo_root()
+
+
+# Absolute path to the TIG repo (auto-detected unless TIG_REPO_ROOT overrides)
+REPO_ROOT = resolve_repo_root()
 ALGO_RUNNER = REPO_ROOT / "algo-runner"
 
 # Track to evaluate; override with TIG_TRACK_ID env if needed
@@ -15,6 +43,22 @@ TRACK_ID = os.getenv("TIG_TRACK_ID", "n_items=500,density=5")
 # Quick evaluation defaults
 NUM_TESTS = int(os.getenv("TIG_NUM_TESTS", "10"))
 TIMEOUT = int(os.getenv("TIG_TIMEOUT", "60"))
+QUALITY_PRECISION = 1_000_000  # Matches algo-runner/src/lib.rs
+MAX_BTB = 0.001
+
+
+def performance_scale(x: float, max_btb: float) -> float:
+    """Smoothly scale performance based on better-than-baseline metric."""
+    if max_btb <= 0:
+        return 0.0
+
+    numerator = math.exp(3000.0 * x) - 1.0
+    denominator = math.exp(3000.0 * max_btb) - 1.0
+
+    if denominator == 0.0:
+        return 0.0
+
+    return max(0.0, min(numerator / denominator, 1.0))
 
 
 def run_cmd(cmd, cwd):
@@ -70,9 +114,13 @@ def deepevolve_interface():
             shutil.rmtree(dst_algo)
         shutil.copytree(src_algo, dst_algo)
 
-        ok, out, err = run_cmd(["python", "tig.py", "build_algorithm"], cwd=REPO_ROOT)
-        if not ok:
-            return False, f"build_algorithm failed\nstdout:\n{out}\nstderr:\n{err}"
+        # DEBUG: Ensured that the path to tig.py is correctly set in the REPO_ROOT and accounted for missing file
+        tig_path = REPO_ROOT / "tig.py"
+        if not tig_path.exists():  # DEBUG: Added a check for tig.py existence
+            return False, f"Missing tig.py at {tig_path}"
+        ok, out, err = run_cmd(["python", str(tig_path), "build_algorithm"], cwd=REPO_ROOT)
+        if not ok:  # DEBUG: Check if the build process failed
+            return False, f"build_algorithm failed\nstdout:\n{out}\nstderr:\n{err}. Check if tig.py is properly located at {tig_path}"
 
         cmd = [
             "python",
@@ -92,9 +140,13 @@ def deepevolve_interface():
         if quality is None:
             return False, f"Could not parse quality from output:\n{out}"
 
+        quality_normalized = quality / QUALITY_PRECISION
+        scaled_quality = performance_scale(quality_normalized, MAX_BTB)
+
         metrics = {
-            "combined_score": quality,
-            "quality": quality,
+            "combined_score": scaled_quality,
+            "quality": scaled_quality,
+            "raw_quality": quality_normalized,
             "time_seconds": time_s,
             "memory_kb": mem_kb,
         }
@@ -102,6 +154,5 @@ def deepevolve_interface():
 
     except Exception:
         return False, traceback.format_exc()
-
 
 

@@ -40,4 +40,3 @@ pub fn solve_challenge(
     save_solution(&Solution { items: selected })?;
     Ok(())
 }
-

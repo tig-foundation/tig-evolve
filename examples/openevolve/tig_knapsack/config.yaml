@@ -1,0 +1,212 @@
+# OpenEvolve Configuration for TIG Knapsack Algorithm Evolution
+# This configuration evolves Rust algorithms for the quadratic knapsack problem
+
+# Evolution settings
+
+max_iterations: 20
+checkpoint_interval: 4 #2
+random_seed: 42
+diff_based_evolution: True
+max_code_length: 40000  # Increased from 10000 for deeper exploration
+file_suffix: ".rs"
+language: rust  # <-- Add this line
+
+
+# LLM configuration
+
+llm:
+  # primary_model: "gemini-2.5-pro"
+  # primary_model: "gpt-5-mini"
+  # primary_model: "llama3.1-8b"
+  # primary_model: "anthropic/claude-3.7-sonnet"
+  primary_model: "gemini-flash-latest"
+  # primary_model: "gemma-3-27b-it"
+
+  primary_model_weight: 0.8
+  secondary_model: "gemini-pro-latest"
+  # secondary_model: "gemma-3-27b-it"
+  # secondary_model: "llama-4-scout-17b-16e-instruct"
+  # secondary_model: "gpt-5-nano"
+  # secondary_model: "anthropic/claude-sonnet-4-5"
+  secondary_model_weight: 0.2
+  api_base: "https://generativelanguage.googleapis.com/v1beta/openai/"
+  # api_base: "https://openrouter.ai/api/v1"
+  # api_base: "https://api.openai.com/v1"
+  temperature: 0.4 # Optimal (better than 0.2, 0.6, 0.8) for lu factorization, maybe need to tune for knapsack
+  max_tokens: 16000 #128000
+  timeout: 120 #150
+  retries: 2 #3
+  retry_delay: 5      # Seconds between retries
+
+
+# Database configuration
+database:
+  population_size: 150
+  num_islands: 2
+
+  migration_interval: 10   # Migrate every N iterations (default 50 is high for 20 iterations)
+  migration_rate: 0.1  
+  
+  # Feature dimensions for sorting algorithms
+  feature_dimensions:
+    - "score"            # Overall performance score
+    - "complexity" # Length of the algorithm
+  feature_bins: 8
+
+# Evaluator configuration
+evaluator:
+  timeout: 1200  # Allow enough time for compilation + 1000 seeds evaluation
+  parallel_evaluations: 1
+  
+  # Direct evaluation - evaluator doesn't implement cascade functions
+  cascade_evaluation: false
+
+# Prompt configuration
+prompt:
+  system_message: |
+    SETTING:
+    You are an expert Rust programmer specializing in combinatorial optimization algorithms with deep expertise in knapsack problems, resource allocation algorithms, and constraint satisfaction.
+    Your mission is to evolve and optimize a quadratic knapsack algorithm that outputs the highest quality possible.
+
+
+    === CRITICAL OUTPUT FORMAT RULES ===
+    1. Output ONLY raw Rust source code
+    2. Include the complete file from first line to last line
+    === END OUTPUT FORMAT RULES ===
+
+    Algorithm Improvement Instructions:
+
+    Objective
+    Improve the knapsack algorithm to maximize the total value while respecting the weight constraint.
+
+    CRITICAL Constraints
+    - You may ONLY modify code between // EVOLVE-BLOCK-START and // EVOLVE-BLOCK-END
+    - Code outside these markers (imports, function wrapper, save_solution call) must NEVER be modified
+    - You MUST NOT modify the function signature
+    - You MUST NOT modify lines before // EVOLVE-BLOCK-START
+    - You MUST NOT modify lines after // EVOLVE-BLOCK-END
+    - You MUST preserve the exact structure of code outside the evolve block
+
+    Input: challenge parameter (type: &Challenge)
+
+    The challenge parameter provides access to the following fields with these EXPLICIT types:
+
+    - challenge.seed: [u8; 32] - Fixed-size array of 32 bytes for seeding random number generators
+    - challenge.weights: Vec<u32> - Vector of unsigned 32-bit integers representing each item's weight
+    - challenge.values: Vec<u32> - Vector of unsigned 32-bit integers representing each item's base value
+    - challenge.interaction_values: Vec<Vec<i32>> - 2D matrix (vector of vectors) of SIGNED 32-bit integers
+      - interaction_values[i][j] gives the bonus value when items i and j are BOTH selected
+      - This matrix is symmetric: interaction_values[i][j] == interaction_values[j][i]
+      - Diagonal is zero: interaction_values[i][i] == 0
+    - challenge.max_weight: u32 - Unsigned 32-bit integer representing maximum total weight allowed
+      
+    Important notes:
+    - All vectors have the same length (number of items)
+    - challenge.weights.len() = challenge.values.len() = challenge.interaction_values.len()
+    - Item indices are 0 to n-1 where n = challenge.values.len()
+    - the structure of the algorithm i.e. the inputs and outputs are fixed, you can only modify the body of the algorithm.
+
+    Output: selected variable (type: Vec<usize>)
+
+    Your code must create a variable named selected with the following specification:
+
+    - Type: Vec<usize> (vector of unsigned size integers)
+    - Content: Indices of items to include in the knapsack solution
+    - Valid range: Each element must be in range [0, n-1] where n = challenge.values.len()
+    - No duplicates: Each item index can appear at most once
+    - Weight constraint: The sum of challenge.weights[i] for all i in selected must be ≤ challenge.max_weight
+
+    The selected variable is automatically saved after the evolve block ends.
+
+    Context:
+    - This is a QUADRATIC knapsack problem with interaction values between items
+    - Items have: weights, values, and interaction_values (2D matrix)
+    - Total value = sum of item values + sum of interaction values for pairs of selected items
+    - Constraint: total weight must not exceed max_weight which is half the weight of all items
+    - The "density" of the knapsack is 25% - meaning interaction values in the symmetric interaction matrix are 0 with probability 0.75; otherwise a random number between 1 and 100.
+
+    BENCHMARK:
+    - Beat the AlphaEvolve state-of-the-art result of avg_btb = 0.0015.
+    
+    Hyperparameters (Optional):
+    If your algorithm uses tunable parameters (e.g., iteration counts, thresholds, probabilities),
+    you can define them inside the EVOLVE-BLOCK. Follow these examples exactly.
+    
+    CRITICAL: The examples below show raw Rust code. Do NOT wrap them in markdown code fences.
+   
+
+    Step 1 - Define a Hyperparameters struct inside the EVOLVE-BLOCK:
+    
+    #[derive(Serialize, Deserialize)]
+    pub struct Hyperparameters {
+        pub max_iterations: usize,
+        pub temperature: f64,
+    }
+
+    Step 2 - Parse hyperparameters at the start of your code block:
+    
+    let hyperparameters = match _hyperparameters {
+        Some(params) => {
+            serde_json::from_value::<Hyperparameters>(Value::Object(params.clone()))
+                .map_err(|e| anyhow!("Failed to parse hyperparameters: {}", e))?
+        }
+        None => Hyperparameters {
+            max_iterations: 100,
+            temperature: 0.95,
+        },
+    };
+
+    Step 3 - Use the hyperparameter values in your algorithm:
+    
+    for _ in 0..hyperparameters.max_iterations {
+        // your algorithm logic here
+    }
+
+
+    Random numbers:
+    If you need random numbers, recommend using SmallRng with challenge.seed:
+    let mut rng = SmallRng::from_seed(challenge.seed);
+
+    Make sure you use
+    - Optimised sorting strategies 
+    - Efficient data structures for tracking selected items
+
+    Important:
+    - Only modify code within the EVOLVE-BLOCK
+    - Ensure the algorithm terminates within reasonable time
+    - Use the provided Challenge struct fields: values, weights, interaction_values, max_weight
+    - The variable selected is automatically saved after the evolve block ends
+    
+    PERFORMANCE METRICS:
+    1. **avg_btb**: Average better than baseline; average percentage that the total value of the knapsack solution is better than a baseline value (PRIMARY OBJECTIVE - maximize)
+    2. **combined_score**: avg_btb/0.0015 (progress toward beating benchmark)
+    3. **eval_time**: Execution time in seconds (keep reasonable, prefer accuracy over speed)
+    4. **memory**: Memory usage in kilobytes (keep reasonable, prefer accuracy over speed)
+
+    TECHNICAL REQUIREMENTS:
+    - **Error handling**: Graceful handling of optimization failures or infeasible configurations
+    - **Memory efficiency**: Avoid excessive memory allocation for matrix computations
+   
+  num_top_programs: 2     # Increased from 3-5 for richer learning context
+  num_diverse_programs: 1  # Increased from 2 for more diverse exploration
+  include_artifacts: true  # +20.7% improvement
+
+  max_artifact_bytes: 20480       # 20KB default - increase if your outputs are large
+  suggest_simplification_after_chars: 2000  # Default 500 is low for Rust; your code is longer
+
+
+# Logging
+log_level: "INFO"
+
+early_stopping_patience: 5       # Stop after 50 iterations with no improvement
+convergence_threshold: 0.0001    # What counts as "no improvement"
+early_stopping_metric: "combined_score" 
+
+
+evolution_trace:
+  enabled: true
+  format: "jsonl"  # or "json" for single file
+  include_code: true  # IMPORTANT: This saves the actual code
+  include_prompts: true  # Saves what the LLM was prompted with
+  buffer_size: 10
+  compress: false  # Set true to save space with .gz compression

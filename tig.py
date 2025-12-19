@@ -191,7 +191,7 @@ def run_test(
             for line in result.stdout.strip().split("\n"):
                 if line.startswith("Quality:"):
                     quality = line.split(":")[1].strip()
-        print(f"Seed: {seed}, Quality: {quality}, Time: {time}, Memory: {memory}KB")
+        # print(f"Seed: {seed}, Quality: {quality}, Time: {time}, Memory: {memory}KB")
         return quality, time, memory
     except Exception as e:
         print(f"Seed: {seed}, Error: {e}")

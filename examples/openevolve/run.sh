@@ -100,4 +100,4 @@ python3 ${OPENEVOLVE_DIR}/openevolve-run.py \
     "examples/openevolve/${CHALLENGE_DIR}/initial_program.rs" \
     "examples/openevolve/${CHALLENGE_DIR}/evaluator.py" \
     --config "examples/openevolve/${CHALLENGE_DIR}/config.yaml" \
-    --iterations 3
+    --iterations 3  # Only for testing purposes

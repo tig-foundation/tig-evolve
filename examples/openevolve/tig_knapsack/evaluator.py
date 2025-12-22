@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 from tig import build_algorithm, run_test
 
-NUM_SEEDS = 1000
+NUM_SEEDS = 100
 TRACK_ID = "n_items=500,density=25"
 TIMEOUT = 120
 

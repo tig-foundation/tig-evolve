@@ -1,0 +1,15 @@
+{
+  "id": "fdba0907-492e-4826-b2e3-42195de1e93d",
+  "generation": 14,
+  "iteration": 200,
+  "current_iteration": 200,
+  "metrics": {
+    "avg_btb": 0.00091627,
+    "combined_score": 0.7662361442843234,
+    "eval_time": 127.864057633,
+    "memory": 358400.0
+  },
+  "language": "rust",
+  "timestamp": 1766169526.050587,
+  "saved_at": 1766169526.1441095
+}

@@ -1,0 +1,7 @@
+{
+    "avg_btb": 0.0,
+    "combined_score": 0.0,
+    "eval_time": 0.0,
+    "memory": 0.0,
+    "error": "Build failed: Command '['cargo', 'build', '--release']' returned non-zero exit status 101."
+}

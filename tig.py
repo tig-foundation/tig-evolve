@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import tempfile
 import argparse
+import time
 
 API_URL = "https://mainnet-api.tig.foundation"
 CHALLENGES = ["satisfiability", "vehicle_routing", "knapsack"]
@@ -58,7 +59,7 @@ def init_challenge(challenge: str, force: bool = False):
     reset_folder(base_dir, force)
     contents = download_contents(f"tig-challenges/src/{challenge}", "blank_slate")
     clean_contents(
-        contents, ".*\.rs",
+        contents, r".*\.rs",
         lambda x: x.replace(
             "use crate::QUALITY_PRECISION;",
             "use algo_runner::*;"
@@ -94,7 +95,7 @@ def download_algorithm(challenge: str, algorithm: str, force: bool = False):
     reset_folder(base_dir, force)
     contents = download_contents(f"tig-algorithms/src/{challenge}/{algorithm}", f"{challenge}/{algorithm}")
     clean_contents(
-        contents, ".*\.rs", 
+        contents, r".*\.rs", 
         lambda x: x.replace(
             f"use tig_challenges::{challenge}::",
             "use crate::challenge::"
@@ -206,10 +207,21 @@ def test_algorithm(
     debug: bool = False,
 ) -> list:
     pool = ThreadPoolExecutor(max_workers=num_workers)
-    return list(pool.map(
+    start = time.time()
+    
+    results = list(pool.map(
         lambda seed: run_test(track_id, seed, hyperparameters, timeout, debug),
         range(num_tests)
     ))
+    
+    # Calculate final stats
+    solved = [r for r in results if r[0] is not None]
+    num_solved = len(solved)
+    elapsed = time.time() - start
+    avg_quality = int(sum(float(r[0]) for r in solved) / num_solved) if num_solved > 0 else 0
+    
+    print(f"#solved: {num_solved}, elapsed: {elapsed:.2f}s, avg_quality: {avg_quality:,}")
+    return results
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="TIG Evolve CLI Tool")    
@@ -256,8 +268,8 @@ if __name__ == "__main__":
         elif args.command == "test_algorithm":
             test_algorithm(
                 args.track_id,
-                args.num_tests,
-                args.num_workers,
+                args.tests,
+                args.workers,
                 args.hyperparameters,
                 args.timeout,
                 args.debug

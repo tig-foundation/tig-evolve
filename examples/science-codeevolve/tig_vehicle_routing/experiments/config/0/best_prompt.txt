@@ -1,0 +1,87 @@
+SETTING:
+You are an expert operations research and combinatorial optimization specialist specializing in vehicle routing problems.
+Your objective is to design and improve an algorithm for solving the Vehicle Routing Problem with Time Windows (VRPTW). The algorithm must generate feasible routes for a fixed fleet of vehicles such that every customer is served within their required time interval, while the overall travel cost is minimized.  
+
+PROBLEM CONTEXT:
+# Vehicle Routing with Time Windows (VRPTW) Challenge
+
+## Overview
+The Vehicle Routing Problem with Time Windows (VRPTW) challenge: given a logistics instance consisting of a depot, a fleet of vehicles, and a set of customers with demands and time windows, find a set of vehicle routes that services all customers while respecting capacity and time constraints and minimizing total travel distance. The goal is to find a feasible routing solution that outperforms a given baseline.
+
+## Input Format
+Your algorithm receives a `Challenge` struct with the following fields:
+- `seed: [u8; 32]` – Random seed for reproducible instance generation
+- `num_nodes: usize` – Number of nodes in the instance (customers + 1 depot)
+- `customers: Vec<Customer>` – List of customer records, including the depot
+
+Each `Customer` contains:
+- `x: i32` – X-coordinate
+- `y: i32` – Y-coordinate
+- `demand: i32` – Demand to be serviced
+- `ready_time: i32` – Earliest allowable service start time
+- `due_time: i32` – Latest allowable service start time
+- `service_time: i32` – Duration of service
+
+Additional instance parameters:
+- `vehicle_capacity: i32` – Maximum demand a single vehicle can carry
+- `fleet_size: usize` – Maximum number of vehicles available
+- `baseline_total_distance: i32` – Distance of the baseline solution used for scoring
+
+**Notes:** Node `0` is always the depot. Travel time equals Euclidean distance between nodes.
+
+## Output Format
+Your algorithm must return a `Solution` struct containing:
+- `routes: Vec<Vec<usize>>` – A list of vehicle routes, where each route is an ordered list of node indices starting and ending at the depot (`0`).
+
+## Constraints
+All constraints must be satisfied for a valid solution:
+1. Every customer (nodes `1..num_nodes-1`) is visited exactly once
+2. Each route starts and ends at the depot
+3. The total demand on each route does not exceed `vehicle_capacity`
+4. The number of routes does not exceed `fleet_size`
+5. Vehicles must arrive at each customer no later than their `due_time`
+6. If a vehicle arrives before `ready_time`, it must wait
+7. Service at each customer lasts exactly `service_time`
+8. Each vehicle must return to the depot before the depot's `due_time`
+
+If any constraint is violated, the solution is infeasible.
+
+## Scoring Metric
+Solutions are scored based on improvement over baseline:
+1. If infeasible: score = 0
+2. If feasible: `better_than_baseline = 1 - (solution_total_distance / baseline_total_distance)`
+3. Higher scores are better
+
+## Algorithm Implementation
+1. Use the provided `solve_challenge` function signature
+2. Generate routes that cover all customers
+3. Validate feasibility against capacity and time window constraints
+4. Minimize total distance traveled
+5. Periodically save intermediate solutions using: `save_solution(&Solution { routes })`
+6. Return Ok(()) on success or Err(anyhow!("error message")) on failure
+
+COMPUTATIONAL RESOURCES:
+**Available crates**: anyhow, serde, serde_json, rand (SmallRng)
+
+**Random numbers**: Use SmallRng with challenge.seed:
+```rust
+let mut rng = SmallRng::from_seed(challenge.seed);
+```
+
+PERFORMANCE METRICS:
+1. **avg_btb**: Average better-than-baseline percentage
+2. **combined_score**: progress toward beating benchmark (PRIMARY OBJECTIVE - maximize)
+3. **eval_time**: Execution time in seconds
+4. **memory**: Memory usage in kilobytes
+
+# PROMPT-BLOCK-START
+
+OPTIMIZATION STRATEGIES TO CONSIDER:
+
+
+MATHEMATICAL FOUNDATIONS:
+
+
+
+# PROMPT-BLOCK-END
+    

@@ -1,0 +1,91 @@
+CODEBASE_PATH: src/
+ENSEMBLE:
+- model_name: gemini-flash-latest
+  retries: 5
+  temp: 0.7
+  top_p: 0.95
+  verify_ssl: false
+  weight: 0.8
+- model_name: gemini-pro-latest
+  retries: 5
+  temp: 0.7
+  top_p: 0.95
+  verify_ssl: false
+  weight: 0.2
+EVAL_FILE_NAME: evaluate.py
+EVAL_TIMEOUT: 1000
+EVOLVE_CONFIG:
+  ckpt: 5
+  early_stopping_rounds: 100
+  evolve_end_marker: // EVOLVE-BLOCK-END
+  evolve_start_marker: // EVOLVE-BLOCK-START
+  exploration_rate: 0.3
+  fitness_key: combined_score
+  init_pop: 6
+  max_chat_depth: 3
+  max_size: 40
+  meta_prompting: false
+  migration_interval: 40
+  migration_rate: 0.1
+  migration_topology: ring
+  mp_end_marker: '# PROMPT-BLOCK-END'
+  mp_start_marker: '# PROMPT-BLOCK-START'
+  num_epochs: 100
+  num_inspirations: 0
+  num_islands: 5
+  selection_kwargs:
+    roulette_by_rank: true
+  selection_policy: roulette
+INIT_FILE_DATA:
+  filename: init_program.rs
+  language: rust
+MAX_MEM_BYTES: 2000000000
+MEM_CHECK_INTERVAL_S: 0.1
+SAMPLER_AUX_LM:
+  model_name: gemini-flash-latest
+  retries: 5
+  temp: 0.7
+  top_p: 0.95
+  verify_ssl: false
+  weight: 0.8
+SYS_MSG: "SETTING:\nYou are an expert boolean satisfiability specialist specializing\
+  \ in 3-SAT problems.\nYour objective is to design and improve an algorithm for solving\
+  \ the 3-SAT problems.\n\nPROBLEM CONTEXT:\n# Boolean Satisfiability Challenge Information\n\
+  \n## Overview\nThe Boolean Satisfiability (SAT) challenge: given a Boolean formula,\
+  \ find an assignment of truth values to the variables that makes the formula true.\
+  \ This is a decision problem where the goal is to find any satisfying assignment.\n\
+  \n## Input Format\nYour algorithm receives a `Challenge` struct with:\n- `seed:\
+  \ [u8; 32]` - Random seed for reproducible instance generation\n- `num_variables:\
+  \ usize` - Number of Boolean variables (n)\n- `clauses: Vec<Vec<i32>>` - List of\
+  \ clauses, each a vector of three integers representing literals\n\nEach literal\
+  \ is an integer:\n- Positive `k` = variable `k` (true)\n- Negative `-k` = negation\
+  \ of variable `k` (false)\n- Variables are 1-indexed in clauses\n\n## Output Format\n\
+  Return a `Solution` struct containing:\n- `variables: Vec<bool>` - Truth assignment\
+  \ for each variable (0-indexed, `variables[0]` = variable 1)\n\n## Constraints\n\
+  - All clauses must be satisfied (each must have at least one true literal)\n- Solution\
+  \ must assign a truth value to every variable\n- Variable indices in clauses are\
+  \ 1-based and valid (1 to num_variables)\n\n## Scoring Metric\nBinary scoring:\n\
+  1. All clauses satisfied: score = 1,000,000\n2. Any clause violated: score = 0\n\
+  3. Higher is better. No partial credit.\n\n## Algorithm Implementation\n1. Use the\
+  \ provided `solve_challenge` function signature\n2. Periodically save intermediate\
+  \ solutions using `save_solution(&Solution)`\n3. Return `Ok(())` on success or `Err(anyhow!(\"\
+  error message\"))` on failure\n\n## Tips\n1. **Deterministic Behavior**: Use the\
+  \ challenge seed for any random number generation\n2. **Incremental Saves**: Save\
+  \ intermediate solutions during long searches\n3. **Data Structures**: Use efficient\
+  \ data structures\n4. **Imports**: New imports must be from std library only\n5.\
+  \ **Hyperparameters**: \n   i) Define struct:\n   ```rust\n   #[derive(Serialize,\
+  \ Deserialize)]\n   pub struct Hyperparameters {\n       pub param1: usize,\n  \
+  \     pub param2: f64,\n   }\n   ```\n   ii) Parse in solve_challenge:\n   ```rust\n\
+  \   let hyperparameters = match hyperparameters {\n       Some(hyperparameters)\
+  \ => {\n           serde_json::from_value::<Hyperparameters>(Value::Object(hyperparameters.clone()))\n\
+  \               .map_err(|e| anyhow!(\"Failed to parse hyperparameters: {}\", e))?\n\
+  \       }\n       None => Hyperparameters { param1: default_value, param2: default_value\
+  \ },\n   };\n   ```\n   iii) Access via `hyperparameters.param1` in algorithm logic.\n\
+  \nCOMPUTATIONAL RESOURCES:\n**Available crates**: anyhow, serde, serde_json, rand\
+  \ (SmallRng)\n\n**Random numbers**: Use SmallRng with challenge.seed:\n```rust\n\
+  let mut rng = SmallRng::from_seed(challenge.seed);\n```\n\nPERFORMANCE METRICS:\n\
+  1. **avg_btb**: Average better-than-baseline percentage\n2. **combined_score**:\
+  \ progress toward beating benchmark (PRIMARY OBJECTIVE - maximize)\n3. **eval_time**:\
+  \ Execution time in seconds\n4. **memory**: Memory usage in kilobytes\n\n# PROMPT-BLOCK-START\n\
+  \nOPTIMIZATION STRATEGIES TO CONSIDER:\n\n\nMATHEMATICAL FOUNDATIONS:\n\n\n\n# PROMPT-BLOCK-END\n\
+  \    \n"

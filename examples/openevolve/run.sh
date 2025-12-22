@@ -12,7 +12,9 @@ set -e  # Exit on any error
 CHALLENGE="${1:-knapsack}"
 
 # Configuration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 TIG_EVOLVE_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CHALLENGE_DIR="tig_${CHALLENGE}"
 OPENEVOLVE_DIR="${TIG_EVOLVE_ROOT}/../openevolve"
 VENV_DIR="${OPENEVOLVE_DIR}/.venv"
 OPENEVOLVE_TAG="v0.2.23"
@@ -97,4 +99,5 @@ export TIG_EVOLVE_ROOT="${TIG_EVOLVE_ROOT}"
 python3 ${OPENEVOLVE_DIR}/openevolve-run.py \
     "examples/openevolve/${CHALLENGE_DIR}/initial_program.rs" \
     "examples/openevolve/${CHALLENGE_DIR}/evaluator.py" \
-    --config "examples/openevolve/${CHALLENGE_DIR}/config.yaml"
+    --config "examples/openevolve/${CHALLENGE_DIR}/config.yaml" \
+    --iterations 3

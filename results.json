@@ -1,0 +1,7 @@
+{
+    "avg_btb": 0.0,
+    "combined_score": 0.0,
+    "eval_time": 0.0,
+    "memory": 0.0,
+    "error": "[Errno 2] No such file or directory: '/root/tig-evolve/examples/science-codeevolve/tig_satisfiability/input/.src/init_program.rs'"
+}

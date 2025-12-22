@@ -1,180 +1,99 @@
 use algo_runner::*;
-mod baselines;
 use anyhow::{anyhow, Result};
-use rand::{rngs::SmallRng, Rng, SeedableRng};
+use ndarray::{Array2, Axis};
+use rand::{
+    distributions::{Distribution, Uniform},
+    rngs::{SmallRng, StdRng},
+    Rng, SeedableRng,
+};
 use serde::{Deserialize, Serialize};
-use std::cell::RefCell;
-use std::collections::HashSet;
 
 impl_kv_string_serde! {
     Track {
-        n_items: usize,
-        density: u32,
+        n_vars: usize,
+        ratio: u32
     }
 }
 
 impl_base64_serde! {
     Solution {
-        items: Vec<usize>,
+        variables: Vec<bool>,
     }
 }
 
 impl Solution {
     pub fn new() -> Self {
-        Self { items: Vec::new() }
+        Self {
+            variables: Vec::new(),
+        }
     }
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct Challenge {
     pub seed: [u8; 32],
-    pub num_items: usize,
-    pub weights: Vec<u32>,
-    pub values: Vec<u32>,
-    pub interaction_values: Vec<Vec<i32>>,
-    pub max_weight: u32,
+    pub num_variables: usize,
+    pub clauses: Vec<Vec<i32>>,
 }
 
 impl Challenge {
     pub fn generate_instance(seed: &[u8; 32], track: &Track) -> Result<Self> {
-        let mut rng = SmallRng::from_seed(seed.clone());
-        // Set constant density for value generation
-        let density = track.density as f64 / 100.0;
+        let mut rng = SmallRng::from_seed(StdRng::from_seed(seed.clone()).r#gen());
+        let num_clauses = (track.n_vars as f64 * track.ratio as f64 / 1000.0).floor() as usize;
 
-        // Generate weights w_i in the range [1, 50]
-        let weights: Vec<u32> = (0..track.n_items).map(|_| rng.gen_range(1..=50)).collect();
+        let var_distr = Uniform::new(1, track.n_vars as i32 + 1);
+        // Create a uniform distribution for negations.
+        let neg_distr = Uniform::new(0, 2);
 
-        // Generate values v_i in the range [1, 100] with density probability, 0 otherwise
-        let values: Vec<u32> = (0..track.n_items)
-            .map(|_| {
-                if rng.gen_bool(density) {
-                    rng.gen_range(1..=100)
-                } else {
-                    0
-                }
-            })
+        // Generate the clauses array.
+        let clauses_array = Array2::from_shape_fn((num_clauses, 3), |_| var_distr.sample(&mut rng));
+
+        // Generate the negations array.
+        let negations = Array2::from_shape_fn((num_clauses, 3), |_| {
+            if neg_distr.sample(&mut rng) == 0 {
+                -1
+            } else {
+                1
+            }
+        });
+
+        // Combine clauses array with negations.
+        let clauses_array = clauses_array * negations;
+
+        // Convert Array2<i32> to Vec<Vec<i32>>
+        let clauses = clauses_array
+            .axis_iter(Axis(0))
+            .map(|row| row.to_vec())
             .collect();
 
-        // Generate interaction values V_ij with the following properties:
-        // - V_ij == V_ji (symmetric matrix)
-        // - V_ii == 0 (diagonal is zero)
-        // - Values are in range [1, 100] with density probability, 0 otherwise
-        let mut interaction_values: Vec<Vec<i32>> = vec![vec![0; track.n_items]; track.n_items];
-
-        for i in 0..track.n_items {
-            for j in (i + 1)..track.n_items {
-                let value = if rng.gen_bool(density) {
-                    rng.gen_range(1..=100)
-                } else {
-                    0
-                };
-
-                // Set both V_ij and V_ji due to symmetry
-                interaction_values[i][j] = value;
-                interaction_values[j][i] = value;
-            }
-        }
-
-        let max_weight: u32 = weights.iter().sum::<u32>() / 2;
-
-        Ok(Challenge {
+        Ok(Self {
             seed: seed.clone(),
-            num_items: track.n_items.clone(),
-            weights,
-            values,
-            interaction_values,
-            max_weight,
+            num_variables: track.n_vars.clone(),
+            clauses,
         })
     }
-
-    pub fn evaluate_total_value(&self, solution: &Solution) -> Result<u32> {
-        let selected_items: HashSet<usize> = solution.items.iter().cloned().collect();
-        if selected_items.len() != solution.items.len() {
-            return Err(anyhow!("Duplicate items selected."));
-        }
-
-        let total_weight = selected_items
-            .iter()
-            .map(|&item| {
-                if item >= self.weights.len() {
-                    return Err(anyhow!("Item ({}) is out of bounds", item));
-                }
-                Ok(self.weights[item])
-            })
-            .collect::<Result<Vec<_>, _>>()?
-            .iter()
-            .sum::<u32>();
-
-        if total_weight > self.max_weight {
-            return Err(anyhow!(
-                "Total weight ({}) exceeded max weight ({})",
-                total_weight,
-                self.max_weight
-            ));
-        }
-        let mut indices: Vec<usize> = selected_items.into_iter().collect();
-        indices.sort();
-
-        let mut total_value = 0i32;
-
-        // Sum the individual values
-        for &i in &indices {
-            total_value += self.values[i] as i32;
-        }
-
-        // Sum the interactive values for pairs in indices
-        for i in 0..indices.len() {
-            for j in (i + 1)..indices.len() {
-                let idx_i = indices[i];
-                let idx_j = indices[j];
-                total_value += self.interaction_values[idx_i][idx_j];
-            }
-        }
-
-        Ok(match total_value {
-            v if v < 0 => 0u32,
-            v => v as u32,
-        })
-    }
-
-    conditional_pub!(
-        fn compute_greedy_baseline(&self) -> Result<Solution> {
-            let solution = RefCell::new(Solution::new());
-            let save_solution_fn = |s: &Solution| -> Result<()> {
-                *solution.borrow_mut() = s.clone();
-                Ok(())
-            };
-            baselines::tabu_search::solve_challenge(self, &save_solution_fn, &None)?;
-            Ok(solution.into_inner())
-        }
-    );
-
-    conditional_pub!(
-        fn compute_sota_baseline(&self) -> Result<Solution> {
-            Err(anyhow!("Not implemented yet"))
-        }
-    );
 
     conditional_pub!(
         fn evaluate_solution(&self, solution: &Solution) -> Result<i32> {
-            let total_value = self.evaluate_total_value(solution)?;
-            let greedy_solution = self.compute_greedy_baseline()?;
-            let greedy_total_value = self.evaluate_total_value(&greedy_solution)?;
-            // TODO: implement SOTA baseline
-            let sota_total_value = greedy_total_value;
-            // if total_value < greedy_total_value {
-            //     return Err(anyhow!(
-            //         "Total value {} is less than greedy baseline value {}",
-            //         total_value,
-            //         greedy_total_value
-            //     ));
-            // }
-            // let sota_solution = self.compute_sota_baseline()?;
-            // let sota_total_value = self.evaluate_total_value(&sota_solution)?;
-            let quality = (total_value as f64 - sota_total_value as f64) / sota_total_value as f64;
-            let quality = quality.clamp(-10.0, 10.0) * QUALITY_PRECISION as f64;
-            let quality = quality.round() as i32;
-            Ok(quality)
+            if solution.variables.len() != self.num_variables {
+                return Err(anyhow!(
+                    "Invalid number of variables. Expected: {}, Actual: {}",
+                    self.num_variables,
+                    solution.variables.len()
+                ));
+            }
+
+            if self.clauses.iter().all(|clause| {
+                clause.iter().any(|&literal| {
+                    let var_idx = literal.abs() as usize - 1;
+                    let var_value = solution.variables[var_idx];
+                    (literal > 0 && var_value) || (literal < 0 && !var_value)
+                })
+            }) {
+                Ok(QUALITY_PRECISION)
+            } else {
+                Ok(0)
+            }
         }
     );
 }

@@ -1,67 +1,71 @@
-# Knapsack Problem
+# Boolean Satisfiability
 
-The quadratic knapsack problem is one of the most popular variants of the single knapsack problem, with applications in many optimization contexts. The aim is to maximize the value of individual items placed in the knapsack while satisfying a weight constraint. However, pairs of items also have positive interaction values, contributing to the total value within the knapsack.
+[The SAT (or Boolean Satisfiability) problem is a decision problem in computer science](https://en.wikipedia.org/wiki/Boolean_satisfiability_problem). It's the problem of determining if there exists a truth assignment to a given Boolean formula that makes the formula true (satisfies all clauses).
 
+A Boolean formula is built from:
 
-## Challenge Overview
+- Boolean variables: $x_1, x_2, x_3, \ldots$
+- Logical connectives: AND ($\land$), OR ($\lor$), NOT ($\neg$)
+- Parentheses for grouping: ( )
 
-For our challenge, we use a version of the quadratic knapsack problem with configurable difficulty, where the following two parameters can be adjusted in order to vary the difficulty of the challenge:
+3-SAT is a special case of SAT where each clause is limited to exactly three literals (a literal is a variable or its negation). An example with 4 variables and 3 clauses can be seen below:
 
-- Parameter 1:  $num\textunderscore{ }items$ is the number of items from which you need to select a subset to put in the knapsack. 
-- Parameter 2: $better\textunderscore{ }than\textunderscore{ }baseline \geq 1$ (see Our Challenge)
+$$(x_1 \lor x_2 \lor x_3) \land (\neg x_1 \lor \neg x_3 \lor \neg x_4) \land (\neg x_2 \lor x_3 \lor x_4)$$
 
-The larger the $num\textunderscore{ }items$, the more number of possible $S_{knapsack}$, making the challenge more difficult. Also, the higher $better\textunderscore{ }than\textunderscore{ }baseline$, the less likely a given $S_{knapsack}$ will be a solution, making the challenge more difficult.
-
-The weight $w_i$ of each of the $num\textunderscore{ }items$ is an integer, chosen independently, uniformly at random, and such that each of the item weights $1 <= w_i <= 50$, for $i=1,2,...,num\textunderscore{ }items$. The values of the items are nonzero  with a density of 25%, meaning they have a 25% probability of being nonzero. The nonzero individual values of the item, $v_i$, and the nonzero interaction values of pairs of items,  $V_{ij}$, are selected at random from the range $[1,100]$.
-
-The total value of a knapsack is determined by summing up the individual values of items in the knapsack, as well as the interaction values of every pair of items \((i,j)\), where \( i > j \), in the knapsack:
-
-$$
-V_{knapsack} = \sum_{i \in knapsack}{v_i} + \sum_{(i,j)\in knapsack}{V_{ij}}
-$$
-
-We impose a weight constraint $W(S_{knapsack}) <= 0.5 \cdot W(S_{all})$, where the knapsack can hold at most half the total weight of all items.
-
+For this particular example, one possible truth assignment that satisfies this formula is $x_1 = True$, $x_2 = False$, $x_3 = True$, $x_4 = False$. This can be verified by substituting the variables and evaluating that every clause will result in $True$.
 
 # Example
 
-Consider an example of a challenge instance with `num_items=4`:
+The following is an example of the 3-SAT problem with configurable difficulty. Two parameters can be adjusted in order to vary the difficulty of the challenge instance:
+
+- Parameter 1: $num\textunderscore{ }variables$ = **The number of variables**.  
+- Parameter 2: $clauses\textunderscore{ }to\textunderscore{ }variables\textunderscore{ }percent$ = **The number of variables as a percentage of the number of clauses**. 
+
+The number of clauses is derived from the above parameters.
+
+$$num\textunderscore{ }clauses = floor(num\textunderscore{ }variables \cdot \frac{clauses\textunderscore{ }to\textunderscore{ }variables\textunderscore{ }percent}{100})$$
+
+Where $floor$ is a function that rounds a floating point number down to the closest integer.
+
+Consider an example instance with `num_variables=4` and `clauses_to_variables_percent=75`:
 
 ```
-weights = [39, 29, 15, 43, 3]
-individual_values = [0, 14, 0, 75, 10]
-interaction_values = [ 0,  0,  0,  0,  5
-                       0,  0, 32,  0, 10
-                       0, 32,  0,  0,  0
-                       0,  0,  0,  0,  0
-                       5, 10,  0,  0,  0 ]
-max_weight = 63
-baseline_value = 100
+clauses = [
+    [1, 2, -3],
+    [-1, 3, 4],
+    [2, -3, 4]
+]
 ```
 
-Now consider the following selection:
+Each clause is an array of three integers. The absolute value of each integer represents a variable, and the sign represents whether the variable is negated in the clause (negative means it's negated).
+
+The clauses represents the following Boolean formula:
 
 ```
-selected_items =  [2, 3, 4]
+(X1 or X2 or not X3) and (not X1 or X3 or X4) and (X2 or not X3 or X4)
 ```
 
-When evaluating this selection, we can confirm that the total weight is less than 63, and the total value is 127:
+Now consider the following assignment:
 
-* Total weight = 15 + 43 + 3 = 61
-* Interaction values = (2,3) + (2,4) + (3,4) = 32 + 10 + 0 = 42
-* Individual values = 0 + 75 + 10 = 85
-* Total value = 42 + 85 = 127
-
-This selection is 27% better than the baseline: 
 ```
-better_than_baseline = total_value / baseline_value - 1
-                     = 127 / 100 - 1
-                     = 0.27
+assignment = [False, True, True, False]
 ```
 
-# Our Challenge 
-In TIG, the baseline value is determined by a two-stage approach. First, items are selected based on their value-to-weight ratio, including interaction values, until the capacity is reached. Then, a tabu-based local search refines the solution by swapping items to improve value while avoiding reversals, with early termination for unpromising swaps.
+This assignment corresponds to the variable assignment $X1=False, X2=True, X3=True, X4=False$.
 
-Each instance of TIG's knapsack problem contains 16 random sub-instances, each with its own baseline selection and baseline value. For each sub-instance, we calculate how much your selection's total value exceeds the baseline value, expressed as a percentage improvement. This improvement percentage is called `better_than_baseline`. Your overall performance is measured by taking the root mean square of these 16 `better_than_baseline` percentages. To pass a difficulty level, this overall score must meet or exceed the specified difficulty target.
+When substituted into the Boolean formula, each clause will evaluate to True, thereby this assignment is a solution as it satisfies all clauses.
 
-For precision, `better_than_baseline` is stored as an integer where each unit represents 0.01%. For example, a `better_than_baseline` value of 150 corresponds to 150/10000 = 1.5%.
+# Our Challenge
+In TIG, the 3-SAT Challenge is based on the example above with configurable difficulty.  Please see the challenge code for a precise specification. 
+
+# Applications
+
+SAT has a vast range of applications in science and industry in fields including computational biology, formal verification, and electronic circuit design. For example:
+
+SAT is used in computational biology to solve the "cell formation problem" of [organising a plant into cells](https://www.sciencedirect.com/science/article/abs/pii/S0957417412006173).
+SAT is also heavily utilised in [electronic circuit design](https://dl.acm.org/doi/abs/10.1145/337292.337611).
+
+<img src="../images/circuit.jfif" alt="Application of SAT" width="100%"/>
+
+<figcaption>Figure 1: Chips made possible by electronic circuit design.</figcaption>
+<br/>

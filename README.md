@@ -9,8 +9,16 @@
 This repository hosts examples integrating with:
 
 * [OpenEvolve](https://github.com/algorithmicsuperintelligence/openevolve)
-* [CodeEvolve](https://github.com/inter-co/science-codeevolve) - Coming Soon
+* [CodeEvolve](https://github.com/inter-co/science-codeevolve)
 * [DeepEvolve](https://github.com/liugangcode/deepevolve) - Coming Soon
+
+## Supported TIG Challenges
+
+| Challenge | Description |
+|-----------|-------------|
+| **knapsack** | Quadratic knapsack problem |
+| **vehicle_routing** | Vehicle routing problem with time windows |
+| **satisfiability** | Boolean satisfiability 3-SAT problem |
 
 ## Project Structure
 
@@ -25,12 +33,19 @@ tig-evolve/
 │       └── algorithm/
 │           └── mod.rs         # Algorithm code (evolved by LLMs)
 └── examples/
-    └── openevolve/            # OpenEvolve integration
-        └── tig_knapsack/
-            ├── run.sh         # One-click setup & run
-            ├── initial_program.rs
-            ├── evaluator.py
-            └── config.yaml
+    ├── openevolve/            # OpenEvolve integration
+    │   ├── run.sh             # One-click setup & run
+    │   └── tig_<challenge>/   # Per-challenge config
+    │       ├── initial_program.rs
+    │       ├── evaluator.py
+    │       └── config.yaml
+    └── science-codeevolve/    # CodeEvolve integration
+        └── tig_<challenge>/   # Per-challenge config
+            ├── configs/
+            └── input/
+                ├── src/initial_program.rs
+                └── evaluate.py
+
 ```
 
 ## Quick Start
@@ -41,7 +56,7 @@ tig-evolve/
 
 ### CodeEvolve
 
-Coming soon
+[See examples/science-codeevolve/README.md](examples/science-codeevolve/README.md#quick-start)
 
 ### DeepEvolve
 

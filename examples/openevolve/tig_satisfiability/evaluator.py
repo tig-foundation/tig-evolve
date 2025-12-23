@@ -8,24 +8,10 @@ import sys
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../..")))
 from tig import build_algorithm, run_test
 
-NUM_SEEDS = 100
-TRACK_ID = "n_items=500,density=25"
-TIMEOUT = 120
+NUM_SEEDS = 5
+TRACK_ID = "n_vars=100000,ratio=4150"
+TIMEOUT = 60
 
-def performance_scale(x: float, max_btb: float) -> float:
-    """
-    Smoothly scale performance based on better-than-baseline metric.
-    """
-    if max_btb <= 0:
-        return 0.0
-
-    numerator = math.exp(3000.0 * x) - 1.0
-    denominator = math.exp(3000.0 * max_btb) - 1.0
-
-    if denominator == 0.0:
-        return 0.0
-
-    return max(0.0, min(numerator / denominator, 1.0))
 
 def calculate_scores(qualities: List[float], times: List[float], memories: List[float]) -> Dict[str, float]:
     """
@@ -33,22 +19,22 @@ def calculate_scores(qualities: List[float], times: List[float], memories: List[
     """
     # Performance score: normalize by the highest achievable btb (~0.0014)
     # This represents ~0.14% improvement over baseline
-    MAX_BTB = 0.001
+    MAX_BTB = 1.0
     avg_btb = sum(qualities) / len(qualities)
-    if avg_btb < 0:
-        performance_score = (0.5 + float(avg_btb))/10.0
-    else:
-        performance_score = performance_scale(avg_btb, MAX_BTB)
+    performance_score = avg_btb/MAX_BTB
     
     eval_time = sum(times) 
     # Logarithmic speed score: each order of magnitude faster = +0.1 score
     # 6000s -> 0, 600s -> 0.1, 60s -> 0.2, 6s -> 0.3, etc.
     if eval_time > 0:
-        speed_score = max(0.0, min(1.0, 0.1 * math.log10(6000.0 / eval_time)))
+        speed_score = max(0.0, min(1.0, 0.1 * math.log10(60.0 / eval_time)))
     else:
         speed_score = 1.0
     memory = sum(memories)
-    combined_score = (performance_score + 0.0*speed_score)
+    if performance_score == 1.0:
+        combined_score = (0.5*performance_score + 0.5*speed_score)
+    else:
+        combined_score = 0.5*performance_score
     
     return {
         "avg_btb": float(avg_btb),

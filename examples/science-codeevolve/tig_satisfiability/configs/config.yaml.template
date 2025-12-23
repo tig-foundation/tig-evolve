@@ -1,0 +1,60 @@
+SYS_MSG: |
+  SETTING:
+  You are an expert boolean satisfiability specialist specializing in 3-SAT problems.
+  Your objective is to design and improve an algorithm for solving the 3-SAT problems.
+ 
+  PROBLEM CONTEXT:
+  {{CHALLENGE_README}}
+  
+  COMPUTATIONAL RESOURCES:
+  **Available crates**: anyhow, serde, serde_json, rand (SmallRng)
+  
+  **Random numbers**: Use SmallRng with challenge.seed:
+  ```rust
+  let mut rng = SmallRng::from_seed(challenge.seed);
+  ```
+
+  PERFORMANCE METRICS:
+  1. **avg_btb**: Average better-than-baseline percentage
+  2. **combined_score**: progress toward beating benchmark (PRIMARY OBJECTIVE - maximize)
+  3. **eval_time**: Execution time in seconds
+  4. **memory**: Memory usage in kilobytes
+
+  # PROMPT-BLOCK-START
+
+  OPTIMIZATION STRATEGIES TO CONSIDER:
+
+
+  MATHEMATICAL FOUNDATIONS:
+
+
+
+  # PROMPT-BLOCK-END
+      
+CODEBASE_PATH: 'src/'
+INIT_FILE_DATA: {filename: 'init_program.rs', language: 'rust'}
+EVAL_FILE_NAME: 'evaluate.py'
+EVAL_TIMEOUT: 1000
+
+MAX_MEM_BYTES: 2000000000
+MEM_CHECK_INTERVAL_S: 0.1
+
+EVOLVE_CONFIG: {fitness_key: 'combined_score',
+                num_epochs: 100, ckpt: 5, max_size: 40, init_pop: 6,
+                exploration_rate: 0.3, 
+                selection_policy: 'roulette', selection_kwargs: {roulette_by_rank: True},
+                early_stopping_rounds: 100,
+                num_islands: 5, migration_topology: 'ring', migration_interval: 40, migration_rate: 0.1,
+                meta_prompting: False, num_inspirations: 0,
+                # meta_prompting: True, num_inspirations: 3,
+                max_chat_depth: 3,
+                mp_start_marker: "# PROMPT-BLOCK-START", mp_end_marker: "# PROMPT-BLOCK-END",
+                evolve_start_marker: "// EVOLVE-BLOCK-START", evolve_end_marker: "// EVOLVE-BLOCK-END",
+                }
+
+# Using Gemini models via Google AI Studio OpenAI-compatible API
+ENSEMBLE: [{model_name: 'gemini-flash-latest', temp: 0.7, top_p: 0.95, retries: 5, weight: 0.8, verify_ssl: False},
+           {model_name: 'gemini-pro-latest', temp: 0.7, top_p: 0.95, retries: 5, weight: 0.2, verify_ssl: False}]
+
+SAMPLER_AUX_LM: {model_name: 'gemini-flash-latest', temp: 0.7, top_p: 0.95, retries: 5, weight: 0.8, verify_ssl: False}
+

@@ -55,7 +55,7 @@ database:
 
 # Evaluator configuration
 evaluator:
-  timeout: 1200  # Allow enough time for compilation + 1000 seeds evaluation
+  timeout: 60  # Allow enough time for compilation + 1000 seeds evaluation
   parallel_evaluations: 1
   
   # Direct evaluation - evaluator doesn't implement cascade functions
@@ -65,19 +65,68 @@ evaluator:
 prompt:
   system_message: |
     SETTING:
-    You are an expert Rust programmer specializing in combinatorial optimization algorithms with deep expertise in knapsack problems, resource allocation algorithms, and constraint satisfaction.
-    Your mission is to evolve and optimize a quadratic knapsack algorithm that outputs the highest quality possible.
+    You are an expert boolean satisfiability specialist specializing in 3-SAT problems.
+    Your objective is to design and improve an algorithm for solving the 3-SAT problems.
+   
+    PROBLEM CONTEXT:
+    The Boolean Satisfiability (SAT) challenge: given a Boolean formula, find an assignment of truth values to the variables that makes the formula true. This is a decision problem where the goal is to find any satisfying assignment.
 
+    INPUT FORMAT:
+    Your algorithm receives a `Challenge` struct with:
+    - `seed: [u8; 32]` - Random seed for reproducible instance generation
+    - `num_variables: usize` - Number of Boolean variables (n)
+    - `clauses: Vec<Vec<i32>>` - List of clauses, each a vector of three integers representing literals
 
-    === CRITICAL OUTPUT FORMAT RULES ===
-    1. Output ONLY raw Rust source code
-    2. Include the complete file from first line to last line
-    === END OUTPUT FORMAT RULES ===
+    Each literal is an integer:
+    - Positive `k` = variable `k` (true)
+    - Negative `-k` = negation of variable `k` (false)
+    - Variables are 1-indexed in clauses
 
-    Algorithm Improvement Instructions:
+    OUTPUT FORMAT:
+    Return a `Solution` struct containing:
+    - `variables: Vec<bool>` - Truth assignment for each variable (0-indexed, `variables[0]` = variable 1)
 
-    Objective
-    Improve the knapsack algorithm to maximize the total value while respecting the weight constraint.
+    CONSTRAINTS:
+    - All clauses must be satisfied (each must have at least one true literal)
+    - Solution must assign a truth value to every variable
+    - Variable indices in clauses are 1-based and valid (1 to num_variables)
+
+    SCORING METRIC:
+    Binary scoring:
+    1. All clauses satisfied: score = 1,000,000
+    2. Any clause violated: score = 0
+    3. Higher is better. No partial credit.
+
+    ALGORITHM IMPLEMENTATION:
+    1. Use the provided `solve_challenge` function signature
+    2. Periodically save intermediate solutions using `save_solution(&Solution)`
+    3. Return `Ok(())` on success or `Err(anyhow!("error message"))` on failure
+
+    TIPS:
+    1. **Deterministic Behavior**: Use the challenge seed for any random number generation
+    2. **Incremental Saves**: Save intermediate solutions during long searches
+    3. **Data Structures**: Use efficient data structures
+    4. **Imports**: New imports must be from std library only
+    5. **Hyperparameters**:
+      i) Define struct
+        ```rust
+        {hashtag}[derive(Serialize, Deserialize)]
+        pub struct Hyperparameters {
+            pub param1: usize,
+            pub param2: f64,
+        }
+        ```
+      ii) Parse in solve_challenge:
+      ```rust
+      let hyperparameters = match hyperparameters {
+          Some(hyperparameters) => {
+              serde_json::from_value::<Hyperparameters>(Value::Object(hyperparameters.clone()))
+                  .map_err(|e| anyhow!("Failed to parse hyperparameters: {}", e))?
+          }
+          None => Hyperparameters { param1: default_value, param2: default_value },
+      };
+      ```
+      iii) Access via `hyperparameters.param1` in algorithm logic.    
 
     CRITICAL Constraints
     - You may ONLY modify code between // EVOLVE-BLOCK-START and // EVOLVE-BLOCK-END
@@ -86,82 +135,8 @@ prompt:
     - You MUST NOT modify lines before // EVOLVE-BLOCK-START
     - You MUST NOT modify lines after // EVOLVE-BLOCK-END
     - You MUST preserve the exact structure of code outside the evolve block
-
-    Input: challenge parameter (type: &Challenge)
-
-    The challenge parameter provides access to the following fields with these EXPLICIT types:
-
-    - challenge.seed: [u8; 32] - Fixed-size array of 32 bytes for seeding random number generators
-    - challenge.weights: Vec<u32> - Vector of unsigned 32-bit integers representing each item's weight
-    - challenge.values: Vec<u32> - Vector of unsigned 32-bit integers representing each item's base value
-    - challenge.interaction_values: Vec<Vec<i32>> - 2D matrix (vector of vectors) of SIGNED 32-bit integers
-      - interaction_values[i][j] gives the bonus value when items i and j are BOTH selected
-      - This matrix is symmetric: interaction_values[i][j] == interaction_values[j][i]
-      - Diagonal is zero: interaction_values[i][i] == 0
-    - challenge.max_weight: u32 - Unsigned 32-bit integer representing maximum total weight allowed
-      
-    Important notes:
-    - All vectors have the same length (number of items)
-    - challenge.weights.len() = challenge.values.len() = challenge.interaction_values.len()
-    - Item indices are 0 to n-1 where n = challenge.values.len()
-    - the structure of the algorithm i.e. the inputs and outputs are fixed, you can only modify the body of the algorithm.
-
-    Output: selected variable (type: Vec<usize>)
-
-    Your code must create a variable named selected with the following specification:
-
-    - Type: Vec<usize> (vector of unsigned size integers)
-    - Content: Indices of items to include in the knapsack solution
-    - Valid range: Each element must be in range [0, n-1] where n = challenge.values.len()
-    - No duplicates: Each item index can appear at most once
-    - Weight constraint: The sum of challenge.weights[i] for all i in selected must be ≤ challenge.max_weight
-
-    The selected variable is automatically saved after the evolve block ends.
-
-    Context:
-    - This is a QUADRATIC knapsack problem with interaction values between items
-    - Items have: weights, values, and interaction_values (2D matrix)
-    - Total value = sum of item values + sum of interaction values for pairs of selected items
-    - Constraint: total weight must not exceed max_weight which is half the weight of all items
-    - The "density" of the knapsack is 25% - meaning interaction values in the symmetric interaction matrix are 0 with probability 0.75; otherwise a random number between 1 and 100.
-
-    BENCHMARK:
-    - Beat the state-of-the-art result of avg_btb = 0.0015.
-    
-    Hyperparameters (Optional):
-    If your algorithm uses tunable parameters (e.g., iteration counts, thresholds, probabilities),
-    you can define them inside the EVOLVE-BLOCK. Follow these examples exactly.
-    
-    CRITICAL: The examples below show raw Rust code. Do NOT wrap them in markdown code fences.
-   
-
-    Step 1 - Define a Hyperparameters struct inside the EVOLVE-BLOCK:
-    
-    #[derive(Serialize, Deserialize)]
-    pub struct Hyperparameters {
-        pub max_iterations: usize,
-        pub temperature: f64,
-    }
-
-    Step 2 - Parse hyperparameters at the start of your code block:
-    
-    let hyperparameters = match _hyperparameters {
-        Some(params) => {
-            serde_json::from_value::<Hyperparameters>(Value::Object(params.clone()))
-                .map_err(|e| anyhow!("Failed to parse hyperparameters: {}", e))?
-        }
-        None => Hyperparameters {
-            max_iterations: 100,
-            temperature: 0.95,
-        },
-    };
-
-    Step 3 - Use the hyperparameter values in your algorithm:
-    
-    for _ in 0..hyperparameters.max_iterations {
-        // your algorithm logic here
-    }
-
+    - You MUST NOT add new imports or external dependencies
+    - You MUST NOT use any external libraries or APIs
 
     Random numbers:
     If you need random numbers, recommend using SmallRng with challenge.seed:

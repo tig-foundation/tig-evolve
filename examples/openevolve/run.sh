@@ -1,17 +1,26 @@
 #!/bin/bash
-# Usage: bash examples/openevolve/tig_knapsack/run.sh
+# Usage: bash examples/openevolve/run.sh <challenge>
+# Example: bash examples/openevolve/run.sh knapsack
+#          bash examples/openevolve/run.sh satisfiability
+#          bash examples/openevolve/run.sh vehicle_routing
+#
 # This script should be run from the tig-evolve root folder
 
 set -e  # Exit on any error
 
+# --- Parse command line arguments ---
+CHALLENGE="${1:-knapsack}"
+
 # Configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TIG_EVOLVE_ROOT="$(cd "${SCRIPT_DIR}/../../.." && pwd)"
+TIG_EVOLVE_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
+CHALLENGE_DIR="tig_${CHALLENGE}"
 OPENEVOLVE_DIR="${TIG_EVOLVE_ROOT}/../openevolve"
 VENV_DIR="${OPENEVOLVE_DIR}/.venv"
 OPENEVOLVE_TAG="v0.2.23"
 
 echo "=== OpenEvolve Setup Script ==="
+echo "Challenge: ${CHALLENGE}"
 echo "TIG-Evolve root: ${TIG_EVOLVE_ROOT}"
 echo "OpenEvolve will be at: ${OPENEVOLVE_DIR}"
 
@@ -74,21 +83,21 @@ echo ""
 echo ">>> API Configuration:"
 echo "    OPENAI_API_KEY: ${OPENAI_API_KEY:0:10}... (truncated)"
 
-# --- Step 6: Initialize the knapsack challenge ---
+# --- Step 6: Initialize the challenge ---
 echo ""
-echo ">>> Initializing knapsack challenge..."
+echo ">>> Initializing ${CHALLENGE} challenge..."
 cd "${TIG_EVOLVE_ROOT}"
-python3 tig.py init_challenge knapsack --force
+python3 tig.py init_challenge "${CHALLENGE}" --force
 
 # --- Step 7: Run openevolve ---
 echo ""
-echo ">>> Running openevolve..."
+echo ">>> Running openevolve for ${CHALLENGE}..."
 
 export TIG_EVOLVE_ROOT="${TIG_EVOLVE_ROOT}"
 
 # Run from tig-evolve root directory
 python3 ${OPENEVOLVE_DIR}/openevolve-run.py \
-    examples/openevolve/tig_knapsack/initial_program.rs \
-    examples/openevolve/tig_knapsack/evaluator.py \
-    --config examples/openevolve/tig_knapsack/config.yaml \
-    --iterations 3
+    "examples/openevolve/${CHALLENGE_DIR}/initial_program.rs" \
+    "examples/openevolve/${CHALLENGE_DIR}/evaluator.py" \
+    --config "examples/openevolve/${CHALLENGE_DIR}/config.yaml" 
+    # --iterations 3  # Only for testing purposes
